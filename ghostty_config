@@ -1,0 +1,45 @@
+# cmd-shift-, to reload - might need to create a new window for some settings (like font changes)
+# see docs/defaults with: 
+# ghostty +show-config --default --docs | less
+
+font-size=22
+font-family="Fira Code"
+
+theme="lovelace"
+
+window-padding-x=10
+window-padding-y=10
+window-padding-color = extend
+window-decoration=true
+
+# new window dimensions
+window-height = 30
+window-width = 120
+
+scrollback-limit = 1000000000
+mouse-scroll-multiplier=3
+
+mouse-hide-while-typing = true
+
+background-opacity=0.85
+background-blur-radius = 20
+
+unfocused-split-opacity = 0.5
+unfocused-split-fill = #443344
+
+confirm-close-surface = false
+
+
+macos-option-as-alt = true
+
+## Keybindings
+
+keybind = ctrl+h=goto_split:left
+keybind = ctrl+j=goto_split:bottom
+keybind = ctrl+k=goto_split:top
+keybind = ctrl+l=goto_split:right
+
+# can "search" scrollback history with: cat <cmd+shift+k> | fzf
+# search scrollback currently not implemented in ghostty: 
+# https://github.com/ghostty-org/ghostty/issues/189#issuecomment-2564576480
+keybind = super+shift+k=write_screen_file:paste
