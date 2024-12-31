@@ -64,7 +64,7 @@ local promptnormal="> %{$reset_color%}"
 local promptjobs="%{$fg_bold[red]%}> %{$reset_color%}"
 PROMPT='%(1j.$promptjobs.$promptnormal)'
 
-# right prompt
+# static prompt above where the cursor is
 git_status_short() {
   if [[ ! -z $(git status --porcelain 2> /dev/null | tail -n1) ]]; then
     echo "%{$fg_bold[red]%} ✘%{$reset_color%}"
@@ -82,12 +82,14 @@ git_prompt_info() {
   echo " %{$fg_bold[green]%}${ref#refs/heads/}$(git_status_short)%{$reset_color%}"
 }
 
-local working_directory="%{$fg_bold[yellow]%}%(5~|%-2~/.../%2~|%4~)%{$reset_color%}"
+local timestamp="%{$fg[blue]%}%D{%H:%M:%S}%{$reset_color%}"
+local working_directory=" %{$fg_bold[yellow]%}%(5~|%-2~/.../%2~|%4~)%{$reset_color%}"
 local exit_code="%(?.. [%{$fg_bold[red]%}%?%{$reset_color%}])"
-local timestamp=" %{$fg[blue]%}%D{%H:%M:%S}%{$reset_color%}"
 
-RPROMPT='${working_directory}$(git_prompt_info)${exit_code}${timestamp}'
-
+# create a line above the prompt to with info
+precmd() {
+    print -rP '${timestamp}${working_directory}${exit_code}$(git_prompt_info)'
+}
 
 # ALIASES/FUNCTIONS ############################################################ 
 
@@ -222,4 +224,3 @@ local this_host="${HOME}/.zsh.d/${HOST}.sh"
 if [ -e ${this_host} ]; then
   . ${this_host}
 fi
-
