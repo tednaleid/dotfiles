@@ -88,7 +88,7 @@ local exit_code="%(?.. [%{$fg_bold[red]%}%?%{$reset_color%}])"
 
 # create a line above the prompt to with info
 precmd() {
-    print -rP '${timestamp}${working_directory}${exit_code}$(git_prompt_info)'
+    print -rP '${timestamp}${working_directory}$(git_prompt_info)${exit_code}'
 }
 
 # ALIASES/FUNCTIONS ############################################################ 
