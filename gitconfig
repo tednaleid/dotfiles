@@ -28,7 +28,7 @@
   # show just commits currently decorated by branch/tag pointers, really useful for high level picture
   ld = !git l --all --simplify-by-decoration
 
-  default-branch="!git symbolic-ref refs/remotes/origin/HEAD | awk -F'/' '{print $NF}'"
+  default-branch="!git branch -l main master --format '%(refname:short)' | head -n1"
 
   # create a new feature branch starting from origin/<main> that tracks it, and switch to it
   nbm = !sh -c 'git checkout -B $(git config target.shortname)-$1 origin/$(git default-branch) && git branch -u origin/$(git default-branch) $(git config target.shortname)-$1' -
