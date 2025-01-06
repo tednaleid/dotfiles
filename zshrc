@@ -210,6 +210,9 @@ if [[ -d "$HOME/bin" ]]; then
   export PATH="$HOME/bin:$PATH"
 fi
 
+if [[ -d "$HOME/.codeium/windsurf/bin" ]]; then
+  export PATH="$HOME/.codeium/windsurf/bin:$PATH"
+fi
 
 # PRIVATE / HOST SPECIFIC ############################################ 
 
