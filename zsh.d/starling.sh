@@ -16,9 +16,17 @@ export PERSONAL_MARKDOWN_NOTES_DIR="$HOME/Documents/archives/docs/personal_markd
 alias cdpn="cd $PERSONAL_MARKDOWN_NOTES_DIR"
 alias opn='open "obsidian://open?vault=personal_markdown_notes"'
 
+export CLIPPINGS_NOTES_DIR="$HOME/Documents/archives/docs/clippings"
+alias cdc="cd $CLIPPINGS_NOTES_DIR"
+alias oc='open "obsidian://open?vault=clippings"'
+
 function rgn() {
     rg -i $@ "${PERSONAL_MARKDOWN_NOTES_DIR}"
     rg -i $@ "${MARKDOWN_NOTES_DIR}"
+}
+
+function rgc() {
+    rg -i $@ "${CLIPPINGS_NOTES_DIR}"
 }
 
 # golang paths

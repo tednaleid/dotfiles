@@ -122,6 +122,8 @@ alias duc='du -sh *(/)'
 # starts a server on port 8000 that makes the current directory browsable with a webbrowser
 alias webshare='python -m SimpleHTTPServer'
 
+alias ws='windsurf'
+
 function drma() {
   ## docker remove all containers
   [[ -z $(docker ps -aq) ]] || docker rm -f $(docker ps -aq)
@@ -227,3 +229,5 @@ local this_host="${HOME}/.zsh.d/${HOST}.sh"
 if [ -e ${this_host} ]; then
   . ${this_host}
 fi
+# Added by Windsurf
+export PATH="/Users/tednaleid/.codeium/windsurf/bin:$PATH"
