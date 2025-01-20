@@ -7,6 +7,7 @@
   editor = vim
   ignorecase = false
   filemode = false
+  pager = delta
 
 [alias]
   st = status --short --branch
@@ -62,3 +63,13 @@
   rebase = preserve
 [credential]
 	helper = manager
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true  # use n and N to move between diff sections
+    dark = true      # or light = true, or omit for auto-detection
+
+[merge]
+    conflictstyle = zdiff3
