@@ -225,9 +225,13 @@ if [ -e ${private} ]; then
 fi
 
 # Include host specific settings that likely won't apply to other machines
-local this_host="${HOME}/.zsh.d/${HOST}.sh"
+# HOST sometimes has .local on the end for some reason, this seems more consistent
+local SIMPLE_HOST=$(hostname -s)
+local this_host="${HOME}/.zsh.d/${SIMPLE_HOST}.sh"
 if [ -e ${this_host} ]; then
   . ${this_host}
+else
+  echo "no host specific settings for ${SIMPLE_HOST}" >&2
 fi
 # Added by Windsurf
 export PATH="/Users/tednaleid/.codeium/windsurf/bin:$PATH"

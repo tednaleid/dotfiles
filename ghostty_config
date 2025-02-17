@@ -7,6 +7,9 @@ font-family="Fira Code"
 
 theme="lovelace"
 
+# https://ghostty.org/docs/config/reference#macos-icon
+macos-icon="holographic"
+
 window-padding-x=10
 window-padding-y=10
 window-padding-color = extend

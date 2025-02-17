@@ -60,9 +60,9 @@
   default = simple
 	autoSetupRemote = true
 [pull]
-  rebase = preserve
+  rebase = merges
 [credential]
-	helper = manager
+	helper = osxkeychain
 
 [interactive]
     diffFilter = delta --color-only
@@ -73,3 +73,10 @@
 
 [merge]
     conflictstyle = zdiff3
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[init]
+	defaultBranch = main
