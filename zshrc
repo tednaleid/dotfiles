@@ -233,5 +233,21 @@ if [ -e ${this_host} ]; then
 else
   echo "no host specific settings for ${SIMPLE_HOST}" >&2
 fi
+
 # Added by Windsurf
 export PATH="/Users/tednaleid/.codeium/windsurf/bin:$PATH"
+
+# bun completions
+# [ -s "/Users/tednaleid/.bun/_bun" ] && source "/Users/tednaleid/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# export NVM_DIR="$HOME/.nvm"
+# [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+# [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+alias claude="/Users/tednaleid/.claude/local/claude"
+
+eval "$(mise activate zsh)"
