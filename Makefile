@@ -1,6 +1,6 @@
 # based off of: https://github.com/mrnugget/dotfiles/blob/master/Makefile
 
-.PHONY: default all git zsh ghostty atuin
+.PHONY: default all git zsh ghostty atuin claude
 
 default:
 	@echo "To set up missing symlinks in your home directory, run: "
@@ -8,7 +8,7 @@ default:
 
 DOTFILE_PATH := $(shell pwd)
 
-all: git zsh ghostty atuin
+all: git zsh ghostty atuin claude
 
 # % is a wildcard, $^ is the right side of the colon, $@ is the left side of the colon
 # so this target will create a symlink from the right side to the left side
@@ -17,6 +17,18 @@ $(HOME)/.%: %
 
 git: $(HOME)/.gitconfig $(HOME)/.gitignore
 zsh: $(HOME)/.zshrc $(HOME)/.zsh.d
+
+$(HOME)/.claude/CLAUDE.md:
+	mkdir -p $(HOME)/.claude
+	ln -sf $(DOTFILE_PATH)/.claude/CLAUDE.md $@
+
+$(HOME)/.claude/commands:
+	ln -sf $(DOTFILE_PATH)/.claude/commands $@
+
+$(HOME)/.claude/docs:
+	ln -sf $(DOTFILE_PATH)/.claude/docs $@
+
+claude: $(HOME)/.claude/CLAUDE.md $(HOME)/.claude/commands $(HOME)/.claude/docs
 
 $(HOME)/.config/ghostty/config:
 	mkdir -p $(HOME)/.config/ghostty

@@ -46,3 +46,4 @@ keybind = ctrl+l=goto_split:right
 # search scrollback currently not implemented in ghostty: 
 # https://github.com/ghostty-org/ghostty/issues/189#issuecomment-2564576480
 keybind = super+shift+k=write_screen_file:paste
+keybind = shift+enter=text:\n
