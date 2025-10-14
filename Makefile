@@ -34,7 +34,11 @@ $(HOME)/.config/ghostty/config:
 	mkdir -p $(HOME)/.config/ghostty
 	ln -sf $(DOTFILE_PATH)/ghostty_config $(HOME)/.config/ghostty/config
 
-ghostty: $(HOME)/.config/ghostty/config
+$(HOME)/.config/ghostty/shaders:
+	mkdir -p $(HOME)/.config/ghostty
+	ln -sf $(DOTFILE_PATH)/ghostty_shaders $(HOME)/.config/ghostty/shaders
+
+ghostty: $(HOME)/.config/ghostty/config $(HOME)/.config/ghostty/shaders
 
 $(HOME)/.config/atuin/config.toml:
 	mkdir -p $(HOME)/.config/atuin

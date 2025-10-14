@@ -2,6 +2,49 @@
 
 *Assumption: `uv` is already installed and available on `PATH`.*
 
+
+## Using `uv` to create a stand-alone script
+
+`uv` can be used in a shebang command to make a `.py` script executable with its own environment:
+
+example:
+
+```python
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["httpx"]
+# ///
+
+import httpx
+
+print(httpx.get("https://example.com"))
+```
+
+another example:
+
+```python
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "flask==3.*",
+# ]
+# ///
+import flask
+
+app = flask.Flask(__name__)
+@app.route("/")
+def hello():
+    name = flask.request.args.get("name", "world")
+    return f"Hello, {name}!"
+
+if __name__ == "__main__":
+    print("example url: http://127.0.0.1:5000?name=ted")
+    app.run()
+```
+
 ---
 
 ## 0 — Sanity Check
