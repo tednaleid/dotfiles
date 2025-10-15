@@ -50,7 +50,8 @@ keybind = shift+enter=text:\n
 
 
 # Enable the cursor blaze shader
-custom-shader = ./shaders/sparks.glsl
+# custom-shader = ./shaders/sparks.glsl
+custom-shader = ./shaders/cursor_blaze_tapered.glsl
 
 
 # Control when the shader animates (optional, defaults to true)

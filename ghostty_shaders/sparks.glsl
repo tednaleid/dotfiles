@@ -1,3 +1,5 @@
+// original from: https://github.com/KroneCorylus/ghostty-shader-playground/blob/main/public/shaders/sparks.glsl
+
 // Original shader by yakovgal on Shadertoy:
 // https://www.shadertoy.com/user/yakovgal
 
@@ -67,16 +69,16 @@ float getSdfRectangle(in vec2 p, in vec2 xy, in vec2 b)
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec3 base_color = iCurrentCursorColor.rgb;
-    base_color = vec3(0.1, 0.5, 2.5);
-    // base_color = vec3(0.5, 0.1, 2.5);
+    // base_color = vec3(0.1, 0.5, 2.5);
+    base_color = vec3(1.5, 0.8, 0.5);
 
     fragColor = texture(iChannel0, fragCoord.xy / iResolution.xy);
 
     float elapsed = iTime - iTimeCursorChange;
 
-    float duration = 0.2;
+    float duration = 0.15;
     float fadeInTime = 0.06;
-    float fadeOutTime = 0.1;
+    float fadeOutTime = 0.11;
     float fadeIn = smoothstep(0.0, fadeInTime, elapsed);
     float fadeOut = 1.0 - smoothstep(duration - fadeOutTime, duration, elapsed);
     float fade = clamp(fadeIn * fadeOut, 0.0, 1.0);
@@ -86,7 +88,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float c0 = 0., c1 = 0.;
 
     // === Configuration Constants ===
-    const float TOTAL_PARTICLES = 20.0; // default 50
+    const float TOTAL_PARTICLES = 10.0; // default 50
     const float PARTICLE_SEPARATION = 20.0; // default 20
     const float RANDOM_SEED_OFFSET = 50.0; // default 50
     const float TIME_MULTIPLIER = 5.0; // Default 5
