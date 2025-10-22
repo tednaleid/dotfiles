@@ -198,6 +198,14 @@ else
   echo "brew install fzf"
 fi
 
+# mise
+if type mise &> /dev/null; then
+  eval "$(mise activate zsh)"
+else
+  echo "missing mise, install with:"
+  echo "brew install mise"
+fi
+
 # PATH ################################################################
 
 if [[ -d "$HOME/.cargo/bin" ]]; then
@@ -250,4 +258,6 @@ export NVM_DIR="$HOME/.nvm"
 
 alias claude="/Users/tednaleid/.claude/local/claude"
 
-eval "$(mise activate zsh)"
+
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
