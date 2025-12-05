@@ -2,7 +2,7 @@
 # see docs/defaults with: 
 # ghostty +show-config --default --docs | less
 
-font-size=22
+font-size=20
 font-family="Fira Code"
 
 theme="lovelace"
@@ -47,8 +47,8 @@ keybind = ctrl+k=goto_split:top
 keybind = ctrl+l=goto_split:right
 
 keybind = super+ctrl+h=new_split:left
-keybind = super+ctrl+j=new_split:up
-keybind = super+ctrl+k=new_split:down
+keybind = super+ctrl+j=new_split:down
+keybind = super+ctrl+k=new_split:up
 keybind = super+ctrl+l=new_split:right
 
 # can "search" scrollback history with: cat <cmd+shift+k> | fzf
