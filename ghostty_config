@@ -37,10 +37,19 @@ macos-option-as-alt = true
 
 ## Keybindings
 
+# see current keybinds with:
+# ghostty +list-keybinds
+# can reload with default cmd-shift-,
+
 keybind = ctrl+h=goto_split:left
 keybind = ctrl+j=goto_split:bottom
 keybind = ctrl+k=goto_split:top
 keybind = ctrl+l=goto_split:right
+
+keybind = super+ctrl+h=new_split:left
+keybind = super+ctrl+j=new_split:up
+keybind = super+ctrl+k=new_split:down
+keybind = super+ctrl+l=new_split:right
 
 # can "search" scrollback history with: cat <cmd+shift+k> | fzf
 # search scrollback currently not implemented in ghostty: 

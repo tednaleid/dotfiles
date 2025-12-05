@@ -29,6 +29,8 @@ function rgc() {
     rg -i $@ "${CLIPPINGS_NOTES_DIR}"
 }
 
+alias cdnci="cd ${WORKSPACE_DIR}/naleid-consulting/invoices"
+
 # golang paths
 export GOPATH=$WORKSPACE_DIR/go
 
