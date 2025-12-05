@@ -31,15 +31,29 @@
 
   default-branch="!git branch -l main master --format '%(refname:short)' | head -n1"
 
+
+  # Show local branches that have been merged into default branch
+  prune-preview = !sh -c 'git branch --merged "$(git default-branch)" | grep -v "^\\*" | grep -v "$(git default-branch)"' -
+
+  # Delete local branches that have been merged into default branch
+  prune-merged = !sh -c 'git branch --merged "$(git default-branch)" | grep -v "^\\*" | grep -v "$(git default-branch)" | xargs -r git branch -d' -
+
+  # Show branches where remote tracking branch is gone (likely merged via squash)
+  gone-preview = !git fetch --prune && git branch -vv | grep ': gone]' | awk '{print $1}'
+
+  # Delete branches where remote tracking branch is gone
+  gone-prune = !git fetch --prune && git branch -vv | grep ': gone]' | awk '{print $1}' | xargs -r git branch -D
+
+
   # create a new feature branch starting from origin/<main> that tracks it, and switch to it
   nbm = !sh -c 'git checkout -B $(git config target.shortname)-$1 origin/$(git default-branch) && git branch -u origin/$(git default-branch) $(git config target.shortname)-$1' -
 
   prom = !"git pull --rebase origin $(git default-branch)"
   prpm = !"git pull --rebase prime $(git default-branch)"
 
-  dth1 = difftool HEAD~1
   d = diff
   dh1 = diff HEAD~1
+  dom = !git diff "origin/$(git default-branch)"
 
   # clickable http link to github repo
   repourl=!"echo https://$(git remote get-url --push origin | sed 's/git\\@\\(.*\\)\\.git/\\1/' | sed 's/:/\\//')"

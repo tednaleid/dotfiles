@@ -37,3 +37,5 @@ export GOPATH=$WORKSPACE_DIR/go
 if [[ -d "$WORKSPACE_DIR/go/bin" ]]; then
   export PATH="$WORKSPACE_DIR/go/bin:$PATH"
 fi
+
+alias claude="/Users/tednaleid/.claude/local/claude"

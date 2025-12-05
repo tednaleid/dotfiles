@@ -3,6 +3,8 @@
 typeset -U PATH
 autoload colors; colors;
 
+XDG_CONFIG_HOME="$HOME/.config"
+
 # HOMEBREW ############################################################ 
 
 # $(brew --prefix) is slow, check existing env variable instead
@@ -129,6 +131,11 @@ function drma() {
   [[ -z $(docker ps -aq) ]] || docker rm -f $(docker ps -aq)
 }
 
+function drmav() {
+  ## docker remove all volumes
+  [[ -z $(docker volume ls -q) ]] || docker volume rm $(docker volume ls -q)
+}
+
 function epochToDate() {
   if [ -z $1 ] ; then
     echo "USAGE: epochToDate 1509821064514"
@@ -236,28 +243,24 @@ fi
 # HOST sometimes has .local on the end for some reason, this seems more consistent
 local SIMPLE_HOST=$(hostname -s)
 local this_host="${HOME}/.zsh.d/${SIMPLE_HOST}.sh"
-if [ -e ${this_host} ]; then
-  . ${this_host}
-else
-  echo "no host specific settings for ${SIMPLE_HOST}" >&2
-fi
+[[ -e ${this_host} ]] && source ${this_host}
 
-# Added by Windsurf
-export PATH="/Users/tednaleid/.codeium/windsurf/bin:$PATH"
-
-# bun completions
-# [ -s "/Users/tednaleid/.bun/_bun" ] && source "/Users/tednaleid/.bun/_bun"
+# sometimes, we have things we don't want checked into git, so also support a nonshared.sh as an alternative
+local nonsharedfile="${HOME}/.zsh.d/nonshared.sh"
+[[ -e ${nonsharedfile} ]] && source ${nonsharedfile}
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+if [[ -d "$BUN_INSTALL/bin" ]]; then
+  export PATH="$BUN_INSTALL/bin:$PATH"
+
+  # bun completions
+  # [ -s "${HOME}/.bun/_bun" ] && source "${HOME}/.bun/_bun"
+fi
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
-alias claude="/Users/tednaleid/.claude/local/claude"
-
 
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
