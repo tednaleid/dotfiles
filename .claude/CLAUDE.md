@@ -37,33 +37,8 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 
 ## Version Control
 
-- If the project isn't in a git repo, STOP and ask permission to initialize one.
-- STOP and ask how to handle uncommitted changes or untracked files when starting work.  Suggest committing existing work first.
-- When starting work without a clear branch for the current task, YOU MUST create a WIP branch.
-- TRACK All non-trivial changes in git.
-- COMMIT FREQUENTLY throughout the development process, even if your high-level tasks are not yet done.
-- **CRITICAL MEMORY: ALWAYS use single quotes in git commit messages to avoid security issues with double quotes that require user prompts**
-
-## Testing
-
-- Tests MUST comprehensively cover ALL functionality. 
-- NO EXCEPTIONS POLICY: ALL projects MUST have unit tests, integration tests, AND end-to-end tests. The only way to skip any test type is if Ted EXPLICITLY states: "I AUTHORIZE YOU TO SKIP WRITING TESTS THIS TIME."
-- FOR EVERY NEW FEATURE OR BUGFIX, YOU MUST follow TDD:
-    1. Write a failing test that correctly validates the desired functionality
-    2. Run the test to confirm it fails as expected
-    3. Write ONLY enough code to make the failing test pass
-    4. Run the test to confirm success
-    5. Refactor if needed while keeping tests green
-- YOU MUST NEVER implement mocks in end to end tests. We always use real data and real APIs.
-- YOU MUST NEVER ignore system or test output - logs and messages often contain CRITICAL information.
-- Test output MUST BE PRISTINE TO PASS. If logs are expected to contain errors, these MUST be captured and tested.
+- you can use `git` to check history, but Ted will always be doing the committing and pushing
 
 # Summary instructions
 
 When you are using /compact, please focus on our conversation, your most recent (and most significant) learnings, and what you need to do next. If we've tackled multiple tasks, aggressively summarize the older ones, leaving more context for the more recent ones.
-
-# Specific Technologies
-
-- Python: @~/.claude/docs/python.md
-    - `uv` for ALL Python package management: @~/.claude/docs/uv.md
-- Go: @~/.claude/docs/go.md
