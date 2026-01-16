@@ -144,7 +144,14 @@ function epochToDate() {
   date -j -r $(($1 / 1000))
 }
 
-
+# cd into a git worktree with fzf fuzzy matching
+wcd() {
+  local worktree
+  worktree=$(git worktree list | fzf --query="$1" --select-1 --exit-0 | awk '{print $1}')
+  if [[ -n "$worktree" ]]; then
+    cd "$worktree"
+  fi
+}
 
 # ENV ################################################################# 
 
