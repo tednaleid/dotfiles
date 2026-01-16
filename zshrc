@@ -148,9 +148,7 @@ function epochToDate() {
 wcd() {
   local worktree
   worktree=$(git worktree list | fzf --query="$1" --select-1 --exit-0 | awk '{print $1}')
-  if [[ -n "$worktree" ]]; then
-    cd "$worktree"
-  fi
+  [[ -n "$worktree" ]] && cd "$worktree"
 }
 
 # ENV ################################################################# 
