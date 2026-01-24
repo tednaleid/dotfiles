@@ -55,6 +55,10 @@ def create_commit_script() -> None:
 PLANS_DIR="{PLANS_DIR}"
 LOGFILE="{Path.home()}/.claude/plans-autocommit.log"
 
+# Prevent git from reading ~/.gitconfig (launchd jobs lack macOS privacy permissions)
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+
 cd "$PLANS_DIR" || exit 1
 
 # Check if there are any changes
@@ -64,7 +68,7 @@ fi
 
 # Stage and commit
 git add -A
-git commit -m "Auto-commit: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOGFILE" 2>&1
+git -c user.name='Plan Auto-commit' -c user.email='auto@local' commit -m "Auto-commit: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOGFILE" 2>&1
 """
     
     COMMIT_SCRIPT.write_text(script_content)
