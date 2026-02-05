@@ -45,7 +45,7 @@ zsh-dir:
     @just _symlink {{justfile_directory()}}/zsh.d {{home_directory()}}/.zsh.d
 
 # set up claude configuration
-claude: claude-md claude-commands claude-docs
+claude: claude-md claude-commands claude-docs claude-install-plugins
 
 claude-md:
     @mkdir -p {{home_directory()}}/.claude
@@ -58,6 +58,17 @@ claude-commands:
 claude-docs:
     @mkdir -p {{home_directory()}}/.claude
     @just _symlink {{justfile_directory()}}/.claude/docs {{home_directory()}}/.claude/docs
+
+# install claude marketplace plugins and skills
+claude-install-plugins:
+    #!/usr/bin/env bash
+    if claude plugin marketplace list 2>&1 | grep -q 'astral-sh/claude-code-plugins'; then
+        echo "✓ astral-sh marketplace already installed"
+    else
+        echo "→ Adding astral-sh marketplace"
+        claude plugin marketplace add astral-sh/claude-code-plugins
+    fi
+    claude plugin install astral@astral-sh
 
 # set up ghostty terminal configuration
 ghostty: ghostty-config ghostty-shaders
