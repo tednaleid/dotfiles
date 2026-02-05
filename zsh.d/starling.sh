@@ -38,4 +38,4 @@ if [[ -d "$WORKSPACE_DIR/go/bin" ]]; then
   export PATH="$WORKSPACE_DIR/go/bin:$PATH"
 fi
 
-alias claude="/Users/tednaleid/.claude/local/claude"
+# alias claude="/Users/tednaleid/.claude/local/claude"
