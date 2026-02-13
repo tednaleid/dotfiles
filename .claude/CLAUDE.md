@@ -35,10 +35,20 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 - ALWAYS ask for clarification rather than making assumptions.
 - If you're having trouble with something, it's ok to stop and ask for help. Especially if it's something your partner might be better at.
 
-## Version Control
-
+# Command Line
 - you can use `git` to check history, but Ted will always be doing the committing and pushing
+- in shell pipelines, use `jq` for parsing emitted JSON
+- prefer creating named python scripts with a `uv` shebang over scripts that are executed as arguments to python/python3, ex:
+```
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = ["rich"]
+# ///
+...
+```
+- store scripts in the /tmp directory if they are ephemeral in use
 
 # Summary instructions
 
-When you are using /compact, please focus on our conversation, your most recent (and most significant) learnings, and what you need to do next. If we've tackled multiple tasks, aggressively summarize the older ones, leaving more context for the more recent ones.
+When you are using /compact, please focus on our conversation, your most recent learnings, and what you need to do next. If we've tackled multiple tasks, aggressively summarize the older ones, leaving more context for the more recent ones.
