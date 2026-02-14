@@ -59,9 +59,9 @@
   repourl=!"echo https://$(git remote get-url --push origin | sed 's/git\\@\\(.*\\)\\.git/\\1/' | sed 's/:/\\//')"
 
   # push out a feature branch with a clickable link for creating a pull request against your upstream origin branch
-  pusho = !git push origin $(git branchname) && echo "create a pull request at: $(git repourl)/compare/$(git for-each-ref --format='%(upstream:lstrip=3)' $(git symbolic-ref -q HEAD) 2>/dev/null || echo $(git default-branch) | awk -F'/' '{print $NF}')...$(git branchname)?expand=1"
+  pusho = !git push origin $(git branch --show-current) && echo "create a pull request at: $(git repourl)/compare/$(git for-each-ref --format='%(upstream:lstrip=3)' $(git symbolic-ref -q HEAD) 2>/dev/null || echo $(git default-branch) | awk -F'/' '{print $NF}')...$(git branch --show-current)?expand=1"
 
-  pushof = !git push -f origin $(git branchname) && echo "create a pull request at: $(git repourl)/compare/$(git for-each-ref --format='%(upstream:lstrip=3)' $(git symbolic-ref -q HEAD) 2>/dev/null || echo $(git default-branch) | awk -F'/' '{print $NF}')...$(git branchname)?expand=1"
+  pushof = !git push -f origin $(git branch --show-current) && echo "create a pull request at: $(git repourl)/compare/$(git for-each-ref --format='%(upstream:lstrip=3)' $(git symbolic-ref -q HEAD) 2>/dev/null || echo $(git default-branch) | awk -F'/' '{print $NF}')...$(git branch --show-current)?expand=1"
 
 
 [color]
