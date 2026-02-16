@@ -84,13 +84,25 @@ git_prompt_info() {
   echo " %{$fg_bold[green]%}${ref#refs/heads/}$(git_status_short)%{$reset_color%}"
 }
 
+if [[ -d ~/.aws ]]; then
+  aws_prompt_info() {
+    if [[ -n "$AWS_PROFILE" ]]; then
+      local color=magenta
+      [[ "$AWS_PROFILE" == *prod* ]] && color=red
+      echo " %{$fg[${color}]%}aws:${AWS_PROFILE}%{$reset_color%}"
+    fi
+  }
+else
+  aws_prompt_info() { }
+fi
+
 local timestamp="%{$fg[blue]%}%D{%H:%M:%S}%{$reset_color%}"
 local working_directory=" %{$fg_bold[yellow]%}%(5~|%-2~/.../%2~|%4~)%{$reset_color%}"
 local exit_code="%(?.. [%{$fg_bold[red]%}%?%{$reset_color%}])"
 
 # create a line above the prompt to with info
 precmd() {
-    print -rP '${timestamp}${working_directory}$(git_prompt_info)${exit_code}'
+    print -rP '${timestamp}${working_directory}$(git_prompt_info)${exit_code}$(aws_prompt_info)'
 }
 
 # ALIASES/FUNCTIONS ############################################################ 
@@ -235,6 +247,22 @@ fi
 if [[ -d "$HOME/.codeium/windsurf/bin" ]]; then
   export PATH="$HOME/.codeium/windsurf/bin:$PATH"
 fi
+
+# AWS
+aws-profile() {
+  if [ ! -d ~/.aws ]; then
+    echo "No ~/.aws directory found"
+    return 1
+  fi
+  local profile
+  if [ -z "$1" ]; then
+    profile=$(aws configure list-profiles | fzf --prompt="AWS Profile> " --header="Current: ${AWS_PROFILE:-<not set>}")
+    [ -n "$profile" ] && export AWS_PROFILE="$profile" && echo "Switched to: $profile"
+  else
+    export AWS_PROFILE="$1"
+    echo "Switched to: $1"
+  fi
+}
 
 # PRIVATE / HOST SPECIFIC ############################################ 
 
