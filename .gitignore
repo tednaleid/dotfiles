@@ -1,3 +1,4 @@
 .github
 .claude/commands/omni_*
+.claude/commands/jira*
 gitconfig.local
