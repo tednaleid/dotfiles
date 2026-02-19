@@ -50,20 +50,25 @@ fi
 model=$(echo "$input" | jq -r '.model.display_name')
 
 # --- Context usage (color-coded progress bar) ---
-total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens')
-total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens')
+# used_percentage and context_window_size reflect current context, not cumulative session totals
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-total_tokens=$((total_input + total_output))
+window_size=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
 
-if [ "$total_tokens" -ge 1000 ]; then
-  token_display="$((total_tokens / 1000))k"
+if [ -n "$used_pct" ] && [ "$used_pct" != "null" ]; then
+  used_tokens=$(awk "BEGIN {printf \"%.0f\", $used_pct / 100 * $window_size}")
 else
-  token_display="${total_tokens}"
+  used_tokens=0
 fi
 
-if [ "$total_tokens" -gt 170000 ]; then
+if [ "$used_tokens" -ge 1000 ]; then
+  token_display="$((used_tokens / 1000))k"
+else
+  token_display="${used_tokens}"
+fi
+
+if [ "$used_tokens" -gt 170000 ]; then
   color_code="\033[31m"   # red
-elif [ "$total_tokens" -ge 150000 ]; then
+elif [ "$used_tokens" -ge 150000 ]; then
   color_code="\033[33m"   # yellow
 else
   color_code="\033[32m"   # green
