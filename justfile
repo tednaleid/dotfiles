@@ -45,7 +45,7 @@ zsh-dir:
     @just _symlink {{justfile_directory()}}/zsh.d {{home_directory()}}/.zsh.d
 
 # set up claude configuration
-claude: claude-md claude-commands claude-docs claude-install-plugins
+claude: claude-md claude-commands claude-docs claude-settings claude-install-plugins
 
 claude-md:
     @mkdir -p {{home_directory()}}/.claude
@@ -58,6 +58,21 @@ claude-commands:
 claude-docs:
     @mkdir -p {{home_directory()}}/.claude
     @just _symlink {{justfile_directory()}}/.claude/docs {{home_directory()}}/.claude/docs
+
+# patch claude settings.json with values from this repo
+claude-settings:
+    #!/usr/bin/env bash
+    settings={{home_directory()}}/.claude/settings.json
+    patch={{justfile_directory()}}/claude-settings-patch.json
+    mkdir -p {{home_directory()}}/.claude
+    if [ ! -f "$settings" ]; then
+        echo "{}" > "$settings"
+    fi
+    # substitute dotfiles dir placeholder then deep-merge into live settings
+    resolved=$(sed "s|__DOTFILES_DIR__|{{justfile_directory()}}|g" "$patch")
+    merged=$(jq -s '.[0] * .[1]' "$settings" <(echo "$resolved"))
+    echo "$merged" > "$settings"
+    echo "✓ Patched $settings"
 
 # install claude marketplace plugins and skills
 claude-install-plugins:

@@ -1,0 +1,8 @@
+{
+  "alwaysThinkingEnabled": true,
+  "cleanupPeriodDays": 99999,
+  "statusLine": {
+    "type": "command",
+    "command": "__DOTFILES_DIR__/claude-statusline.sh"
+  }
+}
