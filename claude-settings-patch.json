@@ -1,6 +1,18 @@
 {
   "alwaysThinkingEnabled": true,
   "cleanupPeriodDays": 99999,
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/tnaleid/Documents/workspace/dotfiles/claude-prompt-submit-hook.sh"
+          }
+        ]
+      }
+    ]
+  },
   "statusLine": {
     "type": "command",
     "command": "__DOTFILES_DIR__/claude-statusline.sh"
