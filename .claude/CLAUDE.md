@@ -27,8 +27,12 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 - MATCH the style and formatting of surrounding code, even if it differs from standard style guides. Consistency within a file trumps external standards.
 - NEVER remove code comments unless you can PROVE they are actively false. Comments are important documentation and must be preserved.
 - NEVER name things as 'improved' or 'new' or 'enhanced', etc. Code naming should be evergreen. What is new today will be "old" someday.
-- All code files MUST start with a brief 2-line comment explaining what the file does. Each line MUST start with "ABOUTME: " to make them easily greppable.
+- All standalone scripts MUST start with a brief 2-line comment explaining what the file does. Each line MUST start with "ABOUTME: " to make them easily greppable.
 - NEVER change whitespace that does not affect execution or output. Otherwise, use a formatting tool.
+
+# Writing documentation
+
+- NEVER use emojis, emdashes, or hyperbole.
 
 ## Getting help
 
