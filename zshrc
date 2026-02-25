@@ -138,6 +138,8 @@ alias webshare='python -m SimpleHTTPServer'
 
 alias ws='windsurf'
 
+alias icat='upscale show'
+
 function drma() {
   ## docker remove all containers
   [[ -z $(docker ps -aq) ]] || docker rm -f $(docker ps -aq)
