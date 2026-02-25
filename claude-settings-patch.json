@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/tnaleid/Documents/workspace/dotfiles/claude-prompt-submit-hook.sh"
+            "command": "__DOTFILES_DIR__/claude-prompt-submit-hook.sh"
           }
         ]
       }
