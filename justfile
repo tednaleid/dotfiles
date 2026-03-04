@@ -16,6 +16,22 @@ default:
 # set up all dotfiles
 all: git zsh ghostty atuin claude
 
+# symlink every file under source dir into dest dir, preserving subdirectory structure
+_sync_dir source dest:
+    #!/usr/bin/env bash
+    # if dest is an old whole-directory symlink, replace it with a real directory
+    if [ -L "{{dest}}" ]; then
+        echo "→ Replacing directory symlink with individual file symlinks: {{dest}}"
+        rm "{{dest}}"
+    fi
+    cd "{{source}}"
+    find . -type f | while read -r rel; do
+        rel="${rel#./}"
+        destfile="{{dest}}/$rel"
+        mkdir -p "$(dirname "$destfile")"
+        just _symlink "{{source}}/$rel" "$destfile"
+    done
+
 # create a symlink if it doesn't exist
 _symlink source dest:
     #!/usr/bin/env bash
@@ -45,19 +61,20 @@ zsh-dir:
     @just _symlink {{justfile_directory()}}/zsh.d {{home_directory()}}/.zsh.d
 
 # set up claude configuration
-claude: claude-md claude-commands claude-docs claude-settings claude-install-plugins
+claude: claude-md claude-commands claude-docs claude-skills claude-settings claude-install-plugins
 
 claude-md:
     @mkdir -p {{home_directory()}}/.claude
     @just _symlink {{justfile_directory()}}/.claude/CLAUDE.md {{home_directory()}}/.claude/CLAUDE.md
 
 claude-commands:
-    @mkdir -p {{home_directory()}}/.claude
-    @just _symlink {{justfile_directory()}}/.claude/commands {{home_directory()}}/.claude/commands
+    @just _sync_dir {{justfile_directory()}}/.claude/commands {{home_directory()}}/.claude/commands
 
 claude-docs:
-    @mkdir -p {{home_directory()}}/.claude
-    @just _symlink {{justfile_directory()}}/.claude/docs {{home_directory()}}/.claude/docs
+    @just _sync_dir {{justfile_directory()}}/.claude/docs {{home_directory()}}/.claude/docs
+
+claude-skills:
+    @just _sync_dir {{justfile_directory()}}/.claude/skills {{home_directory()}}/.claude/skills
 
 # patch claude settings.json with values from this repo
 claude-settings:
