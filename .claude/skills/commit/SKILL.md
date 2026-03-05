@@ -38,7 +38,6 @@ EOF
 ## Rules
 
 * Always use plain `git` commands (e.g., `git status`, not `git -C /path status`). The `-C` flag breaks permission matching.
-* The JIRA ticket or `Chore:` prefix is mandatory. Never commit without one.
 * Never use `--no-verify`.
 * Never push unless explicitly asked.
 * Do not commit files that likely contain secrets (.env, credentials, etc.).
