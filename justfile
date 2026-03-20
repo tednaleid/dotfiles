@@ -16,20 +16,22 @@ default:
 # set up all dotfiles
 all: git zsh ghostty atuin claude
 
-# symlink every file under source dir into dest dir, preserving subdirectory structure
-_sync_dir source dest:
+# copy every file under source dir into dest dir, preserving subdirectory structure
+_copy_dir source dest:
     #!/usr/bin/env bash
-    # if dest is an old whole-directory symlink, replace it with a real directory
-    if [ -L "{{dest}}" ]; then
-        echo "→ Replacing directory symlink with individual file symlinks: {{dest}}"
-        rm "{{dest}}"
+    set -e
+    if [ ! -d "{{source}}" ]; then
+        echo "⚠ {{source}} does not exist, skipping"
+        exit 0
     fi
     cd "{{source}}"
     find . -type f | while read -r rel; do
         rel="${rel#./}"
         destfile="{{dest}}/$rel"
         mkdir -p "$(dirname "$destfile")"
-        just _symlink "{{source}}/$rel" "$destfile"
+        rm -f "$destfile"
+        cp "{{source}}/$rel" "$destfile"
+        echo "✓ Copied $rel"
     done
 
 # create a symlink if it doesn't exist
@@ -61,20 +63,14 @@ zsh-dir:
     @just _symlink {{justfile_directory()}}/zsh.d {{home_directory()}}/.zsh.d
 
 # set up claude configuration
-claude: claude-md claude-commands claude-docs claude-skills claude-settings claude-install-plugins
+claude: claude-md claude-skills claude-settings claude-install-plugins
 
 claude-md:
     @mkdir -p {{home_directory()}}/.claude
     @just _symlink {{justfile_directory()}}/.claude/CLAUDE.md {{home_directory()}}/.claude/CLAUDE.md
 
-claude-commands:
-    @just _sync_dir {{justfile_directory()}}/.claude/commands {{home_directory()}}/.claude/commands
-
-claude-docs:
-    @just _sync_dir {{justfile_directory()}}/.claude/docs {{home_directory()}}/.claude/docs
-
 claude-skills:
-    @just _sync_dir {{justfile_directory()}}/.claude/skills {{home_directory()}}/.claude/skills
+    @just _copy_dir {{justfile_directory()}}/.claude/skills {{home_directory()}}/.claude/skills
 
 # patch claude settings.json with values from this repo
 claude-settings:
@@ -84,6 +80,10 @@ claude-settings:
     mkdir -p {{home_directory()}}/.claude
     if [ ! -f "$settings" ]; then
         echo "{}" > "$settings"
+    else
+        backup=$(mktemp /tmp/claude-settings.XXXXXX)
+        cp "$settings" "$backup"
+        echo "backed up ${settings} -> ${backup}"
     fi
     # substitute dotfiles dir placeholder then deep-merge into live settings
     resolved=$(sed "s|__DOTFILES_DIR__|{{justfile_directory()}}|g" "$patch")
