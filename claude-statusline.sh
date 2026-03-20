@@ -105,10 +105,9 @@ model=$(echo "$input" | jq -r '.model.display_name')
 session_id=$(echo "$input" | jq -r '.session_id')
 submit_cache="/tmp/.claude-prompt-submit-${session_id}"
 if [ -f "$submit_cache" ]; then
-  submit_ms=$(cat "$submit_cache")
-  now_ms=$(python3 -c "import time; print(int(time.time() * 1000))")
-  elapsed_ms=$((now_ms - submit_ms))
-  elapsed_sec=$(awk "BEGIN {printf \"%.1f\", $elapsed_ms / 1000}")
+  submit_sec=$(cat "$submit_cache")
+  now_sec=$(date +%s)
+  elapsed_sec=$((now_sec - submit_sec))
   duration_display="${elapsed_sec}s"
 else
   duration_display="--"

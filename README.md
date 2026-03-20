@@ -28,12 +28,18 @@ just claude    # claude AI config (see below)
 
 The `just claude` recipe sets up:
 
-* **CLAUDE.md** — global instructions symlinked to `~/.claude/CLAUDE.md`
-* **commands** — slash command definitions symlinked to `~/.claude/commands/`
-* **docs** — reference docs symlinked to `~/.claude/docs/`
-* **settings** — patches `~/.claude/settings.json` with values from `claude-settings-patch.json` (deep-merged via `jq`, preserving any existing keys)
-* **plugins** — installs marketplace plugins
+* **CLAUDE.md** -- global instructions symlinked to `~/.claude/CLAUDE.md`
+* **skills** -- skill definitions copied to `~/.claude/skills/`
+* **settings** -- patches `~/.claude/settings.json` with values from `claude-settings-patch.json` (deep-merged via `jq`, preserving any existing keys)
+* **plugins** -- installs astral-sh marketplace plugins
 
-The `claude-settings` recipe merges keys from `claude-settings-patch.json` into the live settings file. This is a one-way patch (dotfiles → live settings), so machine-specific keys in `settings.json` are preserved.
+The `claude-settings` recipe merges keys from `claude-settings-patch.json` into the live settings file. This is a one-way patch (dotfiles -> live settings), so machine-specific keys in `settings.json` are preserved.
 
-`claude-statusline.sh` is a status line script referenced by the patched settings. It displays the current directory, git branch, model name, and color-coded context token usage.
+`claude-statusline.sh` is a status line script referenced by the patched settings. It displays the current directory, git branch, model name, and color-coded context token usage. The context indicator uses a smooth truecolor gradient that reads colors from the active Ghostty theme palette.
+
+### Gradient configuration
+
+Two optional env vars control the context gradient:
+
+* `CLAUDE_CONTEXT_GRADIENT` -- three comma-separated percentages: where the color stops being green, where it reaches yellow, and where it reaches red. Default `15,40,70`.
+* `CLAUDE_CONTEXT_COLORS` -- three comma-separated hex colors (green, yellow, red) to override the Ghostty theme palette. Example: `#00dc00,#e0dc00,#e00000`.

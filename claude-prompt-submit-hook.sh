@@ -11,5 +11,5 @@ input=$(cat)
 session_id=$(echo "$input" | jq -r '.session_id')
 cache_file="/tmp/.claude-prompt-submit-${session_id}"
 
-# epoch milliseconds
-python3 -c "import time; print(int(time.time() * 1000))" > "$cache_file"
+# epoch seconds
+date +%s > "$cache_file"
