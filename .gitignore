@@ -3,3 +3,5 @@
 .claude/commands/jira*
 gitconfig.local
 .claude/settings.local.json
+.llm/*
+!.llm/.gitkeep
