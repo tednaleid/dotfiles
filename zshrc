@@ -158,6 +158,18 @@ function epochToDate() {
   date -j -r $(($1 / 1000))
 }
 
+if ! type tag &> /dev/null; then
+  echo "missing tag, install with:"
+  echo "brew install tag"
+elif ! type trash &> /dev/null; then
+  echo "missing trash, install with:"
+  echo "brew install trash"
+else
+  function trash-tagged() {
+    tag -m "${1:-Red}" -0 | tee >(tr '\0' '\n' >&2) | xargs -0 trash
+  }
+fi
+
 # cd into a git worktree with fzf fuzzy matching
 wcd() {
   local worktree
