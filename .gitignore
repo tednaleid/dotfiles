@@ -2,3 +2,4 @@
 .claude/commands/omni_*
 .claude/commands/jira*
 gitconfig.local
+.claude/settings.local.json

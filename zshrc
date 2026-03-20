@@ -284,15 +284,6 @@ local this_host="${HOME}/.zsh.d/${SIMPLE_HOST}.sh"
 local nonsharedfile="${HOME}/.zsh.d/nonshared.sh"
 [[ -e ${nonsharedfile} ]] && source ${nonsharedfile}
 
-# bun
-export BUN_INSTALL="$HOME/.bun"
-if [[ -d "$BUN_INSTALL/bin" ]]; then
-  export PATH="$BUN_INSTALL/bin:$PATH"
-
-  # bun completions
-  # [ -s "${HOME}/.bun/_bun" ] && source "${HOME}/.bun/_bun"
-fi
-
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
