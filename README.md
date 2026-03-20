@@ -39,7 +39,6 @@ The `claude-settings` recipe merges keys from `claude-settings-patch.json` into 
 
 ### Gradient configuration
 
-Two optional env vars control the context gradient:
+An optional env var controls the context gradient:
 
 * `CLAUDE_CONTEXT_GRADIENT` -- three comma-separated percentages: where the color stops being green, where it reaches yellow, and where it reaches red. Default `15,40,70`.
-* `CLAUDE_CONTEXT_COLORS` -- three comma-separated hex colors (green, yellow, red) to override the Ghostty theme palette. Example: `#00dc00,#e0dc00,#e00000`.

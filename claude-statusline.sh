@@ -5,64 +5,27 @@
 # Reads JSON from stdin (piped by Claude Code) and renders a status line.
 # Format: directory branch ✔/✘ | Model Name | tokens [progress bar] pct%
 #
-# Context color: smooth truecolor gradient from green -> yellow -> red based
-# on percentage used. Colors are read from the Ghostty theme palette.
-# Env vars (all optional):
+# Context color: ANSI green -> yellow -> red based on percentage used.
+# Uses terminal palette colors so the bar matches the active theme.
+# Env var (optional):
 #   CLAUDE_CONTEXT_GRADIENT  three comma-separated pcts (default 15,40,70)
-#   CLAUDE_CONTEXT_COLORS    three comma-separated hex colors: green,yellow,red
 
 set -euo pipefail
 
 input=$(cat)
 
-# --- Theme-aware gradient colors ---
-if [ -n "${CLAUDE_CONTEXT_COLORS:-}" ]; then
-  IFS=',' read -r color_green color_yellow color_red <<< "$CLAUDE_CONTEXT_COLORS"
-else
-  ghostty_config="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty/config"
-  theme_name=$(grep -m1 '^theme' "$ghostty_config" 2>/dev/null | sed 's/.*= *//; s/"//g')
-  theme_file=$(find "/Applications/Ghostty.app/Contents/Resources/ghostty/themes/" -iname "$theme_name" -print -quit 2>/dev/null)
-  if [ -n "$theme_file" ] && [ -f "$theme_file" ]; then
-    color_green=$(grep '^palette = 2=' "$theme_file" | sed 's/.*=//')
-    color_yellow=$(grep '^palette = 3=' "$theme_file" | sed 's/.*=//')
-    color_red=$(grep '^palette = 1=' "$theme_file" | sed 's/.*=//')
-  fi
-fi
-color_green="${color_green:-#5adecd}"
-color_yellow="${color_yellow:-#f2a272}"
-color_red="${color_red:-#f37f97}"
-
+# --- Context gradient thresholds ---
 IFS=',' read -r green_pct yellow_pct red_pct <<< "${CLAUDE_CONTEXT_GRADIENT:-15,40,70}"
 
-hex_to_rgb() {
-  local hex="${1#\#}"
-  printf "%d %d %d" "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
-}
-
-# Convert theme colors to RGB once
-read -r _gr _gg _gb <<< "$(hex_to_rgb "$color_green")"
-read -r _yr _yg _yb <<< "$(hex_to_rgb "$color_yellow")"
-read -r _rr _rg _rb <<< "$(hex_to_rgb "$color_red")"
-
-# Sets _r, _g, _b to the gradient RGB at the given percentage
-compute_rgb() {
+# Returns the ANSI color code for a given percentage on the gradient
+ansi_color_at() {
   local pct=$1
-  if [ "$pct" -le "$green_pct" ]; then
-    _r=$_gr; _g=$_gg; _b=$_gb
-  elif [ "$pct" -le "$yellow_pct" ]; then
-    local span=$((yellow_pct - green_pct))
-    local t=$((pct - green_pct))
-    _r=$(( _gr + (_yr - _gr) * t / span ))
-    _g=$(( _gg + (_yg - _gg) * t / span ))
-    _b=$(( _gb + (_yb - _gb) * t / span ))
+  if [ "$pct" -le "$yellow_pct" ]; then
+    echo "32"  # green
   elif [ "$pct" -le "$red_pct" ]; then
-    local span=$((red_pct - yellow_pct))
-    local t=$((pct - yellow_pct))
-    _r=$(( _yr + (_rr - _yr) * t / span ))
-    _g=$(( _yg + (_rg - _yg) * t / span ))
-    _b=$(( _yb + (_rb - _yb) * t / span ))
+    echo "33"  # yellow
   else
-    _r=$_rr; _g=$_rg; _b=$_rb
+    echo "31"  # red
   fi
 }
 
@@ -136,8 +99,7 @@ else
   used_int=0
 fi
 
-compute_rgb "$used_int"
-printf -v color_code "\033[38;2;%d;%d;%dm" "$_r" "$_g" "$_b"
+color_code="\033[$(ansi_color_at "$used_int")m"
 
 if [ -n "$used_pct" ] && [ "$used_pct" != "null" ]; then
   filled=$((used_int / 5))
@@ -146,10 +108,8 @@ if [ -n "$used_pct" ] && [ "$used_pct" != "null" ]; then
     if [ "$i" -lt "$filled" ]; then
       bar+="${color_code}█"
     else
-      # Unfilled cells show the gradient at their position, dimmed
-      compute_rgb $((i * 5))
-      printf -v dim_color "\033[38;2;%d;%d;%dm" "$((_r / 3))" "$((_g / 3))" "$((_b / 3))"
-      bar+="${dim_color}░"
+      # Unfilled cells show their position's color, dimmed
+      bar+="\033[2;$(ansi_color_at $((i * 5)))m░\033[22m"
     fi
   done
   context_display="${color_code}${token_display} [${bar}${color_code}] ${used_pct}%\033[0m"
