@@ -1,4 +1,8 @@
 # ABOUTME: justfile for managing dotfile symlinks from this repo to home directory
+# ABOUTME: also installs homebrew casks and sets up syncthing ignore patterns
+
+# homebrew casks to install/upgrade (use full tap path for custom taps)
+_casks := "tednaleid/montty/montty tednaleid/limn/limn syncthing-app"
 
 # default recipe - show help
 default:
@@ -6,15 +10,17 @@ default:
     @echo "  just all"
     @echo ""
     @echo "Available recipes:"
-    @echo "  just all      - set up all dotfiles"
-    @echo "  just git      - set up git config"
-    @echo "  just zsh      - set up zsh config"
-    @echo "  just ghostty  - set up ghostty terminal config"
-    @echo "  just atuin    - set up atuin shell history config"
-    @echo "  just claude   - set up claude AI config"
+    @echo "  just all       - set up all dotfiles and install casks"
+    @echo "  just git       - set up git config"
+    @echo "  just zsh       - set up zsh config"
+    @echo "  just ghostty   - set up ghostty terminal config"
+    @echo "  just atuin     - set up atuin shell history config"
+    @echo "  just claude    - set up claude AI config"
+    @echo "  just casks     - install/upgrade homebrew casks"
+    @echo "  just syncthing - set up syncthing ignore patterns for ~/code"
 
 # set up all dotfiles
-all: git zsh ghostty atuin claude
+all: git zsh ghostty atuin claude casks syncthing
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 _copy_dir source dest:
@@ -119,3 +125,77 @@ atuin: atuin-config
 atuin-config:
     @mkdir -p {{home_directory()}}/.config/atuin
     @just _symlink {{justfile_directory()}}/atuin_config.toml {{home_directory()}}/.config/atuin/config.toml
+
+# install or upgrade homebrew casks
+casks:
+    #!/usr/bin/env bash
+    set -e
+    for cask in {{_casks}}; do
+        name="${cask##*/}"
+        if brew list --cask "$name" &>/dev/null; then
+            output=$(brew upgrade --cask "$cask" 2>&1) || true
+            if echo "$output" | grep -q "already installed"; then
+                echo "✓ $name is up to date"
+            else
+                echo "↑ $name upgraded"
+                echo "$output"
+            fi
+        else
+            echo "→ Installing $name"
+            brew install --cask "$cask"
+        fi
+    done
+
+# set up syncthing ignore patterns for ~/code
+syncthing: syncthing-ignore syncthing-spotlight syncthing-instructions
+
+syncthing-ignore:
+    #!/usr/bin/env bash
+    src="{{justfile_directory()}}/stglobalignore"
+    dest="{{home_directory()}}/code/.stglobalignore"
+    ignore="{{home_directory()}}/code/.stignore"
+    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+        echo "✓ $dest is up to date"
+    else
+        cp "$src" "$dest"
+        echo "→ Copied stglobalignore to $dest"
+    fi
+    if [ -f "$ignore" ]; then
+        echo "✓ $ignore already exists"
+    else
+        echo '#include .stglobalignore' > "$ignore"
+        echo "→ Created $ignore"
+    fi
+
+syncthing-spotlight:
+    #!/usr/bin/env bash
+    marker="{{home_directory()}}/code/.metadata_never_index"
+    if [ -f "$marker" ]; then
+        echo "✓ $marker already exists"
+    else
+        touch "$marker"
+        echo "→ Created $marker (Spotlight exclusion)"
+    fi
+
+syncthing-instructions:
+    @echo ""
+    @echo "=== Syncthing Setup ==="
+    @echo ""
+    @echo "Initial pairing (one-time):"
+    @echo "  1. Open Syncthing web UI on both machines: http://127.0.0.1:8384"
+    @echo "  2. Actions > Show ID on one machine, copy the Device ID"
+    @echo "  3. Add Remote Device on the other machine, paste the ID"
+    @echo "  4. Accept the device on the first machine"
+    @echo "  5. Add ~/code as a shared folder, share it with the paired device"
+    @echo ""
+    @echo "Performance tuning (web UI):"
+    @echo "  - Edit Folder > Advanced: Rescan Interval = 86400, Case Sensitive FS = No"
+    @echo "  - Edit Device > Advanced: Number of Connections = 8 (for LAN)"
+    @echo "  - Actions > Advanced > Options:"
+    @echo "      Limit Bandwidth in LAN = No"
+    @echo "      Set Low Priority = No"
+    @echo "      Database Tuning = Large"
+    @echo "  - System Settings > Spotlight > Privacy: add ~/code"
+    @echo ""
+    @echo "Verify sync with: sumpig fingerprint ~/code"
+    @echo "Compare devices:  sumpig compare ~/code/.sumpig-fingerprints/*.txt"
