@@ -68,6 +68,9 @@ _site
 // ===== General build output =====
 dist
 
+// ===== Large ML model files (re-download from source instead of syncing) =====
+*.safetensors
+
 // ===== Local tool caches =====
 .llm
 
@@ -77,4 +80,3 @@ dist
 // ===== Syncthing internals =====
 .stfolder
 .stversions
-*.sync-conflict-*
