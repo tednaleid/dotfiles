@@ -1,8 +1,8 @@
 # ABOUTME: justfile for managing dotfile symlinks from this repo to home directory
-# ABOUTME: also installs homebrew casks and sets up syncthing ignore patterns
+# ABOUTME: also installs homebrew casks and shared clipboard tool
 
 # homebrew casks to install/upgrade (use full tap path for custom taps)
-_casks := "tednaleid/montty/montty tednaleid/limn/limn syncthing-app"
+_casks := "tednaleid/montty/montty tednaleid/limn/limn"
 
 # default recipe - show help
 default:
@@ -17,11 +17,10 @@ default:
     @echo "  just atuin     - set up atuin shell history config"
     @echo "  just claude    - set up claude AI config"
     @echo "  just casks     - install/upgrade homebrew casks"
-    @echo "  just syncthing - set up syncthing ignore patterns for ~/code"
     @echo "  just pb        - set up pb shared clipboard tool"
 
 # set up all dotfiles
-all: git zsh ghostty atuin claude casks syncthing pb
+all: git zsh ghostty atuin claude casks pb
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 _copy_dir source dest:
@@ -146,109 +145,6 @@ casks:
             brew install --cask "$cask"
         fi
     done
-
-# set up syncthing ignore patterns for ~/code
-syncthing: syncthing-ignore syncthing-spotlight syncthing-config syncthing-instructions
-
-syncthing-ignore:
-    #!/usr/bin/env bash
-    src="{{justfile_directory()}}/stglobalignore"
-    dest="{{home_directory()}}/code/.stglobalignore"
-    ignore="{{home_directory()}}/code/.stignore"
-    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
-        echo "✓ $dest is up to date"
-    else
-        cp "$src" "$dest"
-        echo "→ Copied stglobalignore to $dest"
-    fi
-    if [ -f "$ignore" ]; then
-        echo "✓ $ignore already exists"
-    else
-        echo '#include .stglobalignore' > "$ignore"
-        echo "→ Created $ignore"
-    fi
-
-syncthing-spotlight:
-    #!/usr/bin/env bash
-    marker="{{home_directory()}}/code/.metadata_never_index"
-    if [ -f "$marker" ]; then
-        echo "✓ $marker already exists"
-    else
-        touch "$marker"
-        echo "→ Created $marker (Spotlight exclusion)"
-    fi
-
-# patch syncthing config.xml for LAN-only use (settings not available in GUI)
-syncthing-config:
-    #!/usr/bin/env bash
-    config="$HOME/Library/Application Support/Syncthing/config.xml"
-    if [ ! -f "$config" ]; then
-        echo "⚠ $config not found (launch Syncthing once first)"
-        exit 0
-    fi
-    if pgrep -f syncthing >/dev/null 2>&1; then
-        echo "⚠ Syncthing is running -- quit it before patching config.xml"
-        exit 1
-    fi
-    changed=false
-    patch_value() {
-        local tag="$1" old="$2" new="$3" reason="$4"
-        if grep -q "<${tag}>${old}</${tag}>" "$config"; then
-            sed -i '' "s|<${tag}>${old}</${tag}>|<${tag}>${new}</${tag}>|" "$config"
-            echo "→ ${tag}: ${old} -> ${new} (${reason})"
-            changed=true
-        fi
-    }
-    patch_value setLowPriority true false "allow normal CPU/IO priority"
-    patch_value crashReportingEnabled true false "no external crash reports"
-    patch_value autoUpgradeIntervalH 12 0 "managed via just casks"
-    patch_value stunServer default "" "not needed on LAN"
-    patch_value stunKeepaliveStartS 180 0 "not needed on LAN"
-    patch_value stunKeepaliveMinS 20 0 "not needed on LAN"
-    if [ "$changed" = false ]; then
-        echo "✓ config.xml already patched"
-    fi
-
-syncthing-instructions:
-    @echo ""
-    @echo "=== Syncthing Setup ==="
-    @echo ""
-    @echo "First launch (per machine):"
-    @echo "  1. Open http://127.0.0.1:8384"
-    @echo "  2. Set a GUI password when prompted"
-    @echo "  3. Actions > Settings > General:"
-    @echo "       Anonymous Usage Reporting: OFF"
-    @echo "       Crash Reporting: OFF"
-    @echo "       Start Browser: OFF"
-    @echo "       Auto Upgrade Interval: 0 (managed via just casks)"
-    @echo "  4. Actions > Settings > Connections:"
-    @echo "       Global Discovery: OFF (no announcing to discovery.syncthing.net)"
-    @echo "       Local Discovery: ON (LAN broadcast on UDP 21027)"
-    @echo "       Enable Relaying: OFF (no public relay servers)"
-    @echo "       NAT Traversal: OFF (not needed on LAN)"
-    @echo "       Sync Protocol Listen Addresses:"
-    @echo "         tcp://0.0.0.0:22000, quic://0.0.0.0:22000"
-    @echo "         (replaces default which includes the relay pool URL)"
-    @echo "  5. Actions > Settings > GUI:"
-    @echo "       Use HTTPS: ON"
-    @echo ""
-    @echo "Device pairing (one-time):"
-    @echo "  1. Actions > Show ID on one machine, copy the Device ID"
-    @echo "  2. Add Remote Device on the other machine, paste the ID"
-    @echo "  3. Accept the device on the first machine"
-    @echo "  4. Add ~/code as a shared folder, share it with the paired device"
-    @echo ""
-    @echo "Performance tuning (web UI):"
-    @echo "  - Edit Folder > Advanced: Full Rescan Interval = 86400"
-    @echo "  - Edit Device > Advanced: Number of Connections = 8 (for LAN)"
-    @echo "  - Actions > Advanced > Options:"
-    @echo "      Limit Bandwidth in LAN = No"
-    @echo "      Set Low Priority = No"
-    @echo "      Database Tuning = Large"
-    @echo "  - System Settings > Spotlight > Privacy: add ~/code"
-    @echo ""
-    @echo "Verify sync with: sumpig fingerprint ~/code"
-    @echo "Compare devices:  sumpig compare ~/code/.sumpig-fingerprints/*.txt"
 
 # set up pb shared clipboard tool
 pb:
