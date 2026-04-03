@@ -25,7 +25,6 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 - WORK HARD to reduce code duplication, even if the refactoring takes extra effort.
 - NEVER throw away or rewrite implementations without EXPLICIT permission. If you're considering this, YOU MUST STOP and ask first.
 - MATCH the style and formatting of surrounding code, even if it differs from standard style guides. Consistency within a file trumps external standards.
-- NEVER remove code comments unless you can PROVE they are actively false. Comments are important documentation and must be preserved.
 - NEVER name things as 'improved' or 'new' or 'enhanced', etc. Code naming should be evergreen. What is new today will be "old" someday.
 - All standalone scripts MUST start with a brief 2-line comment explaining what the file does. Each line MUST start with "ABOUTME: " to make them easily greppable.
 - NEVER change whitespace that does not affect execution or output. Otherwise, use a formatting tool.
@@ -40,7 +39,6 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 - If you're having trouble with something, it's ok to stop and ask for help. Especially if it's something your partner might be better at.
 
 # Command Line
-- you can use `git` to check history, but Ted will always be doing the committing and pushing
 - in shell pipelines, use `jq` for parsing emitted JSON
 - prefer creating named python scripts with a `uv` shebang over scripts that are executed as arguments to python/python3, ex:
 ```
@@ -51,8 +49,3 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 # ///
 ...
 ```
-- store scripts in the /tmp directory if they are ephemeral in use
-
-# Summary instructions
-
-When you are using /compact, please focus on our conversation, your most recent learnings, and what you need to do next. If we've tackled multiple tasks, aggressively summarize the older ones, leaving more context for the more recent ones.
