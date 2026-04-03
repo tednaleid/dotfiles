@@ -35,8 +35,8 @@ function rgc() {
 
 alias cdnci="cd ${CODE_DIR}/naleid-consulting/invoices"
 
-# golang paths
-export GOPATH="${CODE_DIR}/go"
+# golang paths, it should be outside of dropbox
+export GOPATH="${HOME}/go"
 if [[ -d "${GOPATH}" ]]; then
   mkdir -p "${GOPATH}"
 fi
