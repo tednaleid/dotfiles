@@ -149,6 +149,6 @@ casks:
 # set up pb shared clipboard tool
 pb:
     @mkdir -p {{home_directory()}}/.local/bin
-    @mkdir -p {{home_directory()}}/code/clipboard
+    @mkdir -p {{home_directory()}}/code/pb
     @just _symlink {{justfile_directory()}}/pb {{home_directory()}}/.local/bin/pb
     @just _symlink {{justfile_directory()}}/pb-preview {{home_directory()}}/.local/bin/pb-preview

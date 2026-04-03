@@ -4,8 +4,8 @@
 # dependencies = ["coolname", "Pillow"]
 # ///
 
-# ABOUTME: shared clipboard tool backed by ~/code/clipboard and synced via Syncthing
-# ABOUTME: use 'pb copy' to save clipboard, 'pb paste' to load, 'pb list' to browse
+# ABOUTME: shared clipboard tool with file-backed history, works in pipelines
+# ABOUTME: use 'pb copy' to save, 'pb paste' to load, 'pb list' to browse with fzf
 
 import argparse
 import base64
@@ -16,7 +16,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-CLIPBOARD_DIR = Path.home() / "code" / "clipboard"
+PB_DIR = Path(os.environ.get("PB_DIR", Path.home() / "code" / "pb"))
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".gif"}
 TEXT_EXTENSIONS = {".txt"}
 # Matches our naming convention: 2026-04-02T17-05-23_cool-slug.ext
@@ -49,14 +49,12 @@ def get_clipboard_type():
 def save_clipboard_image(dest):
     """Extract image from clipboard and save as PNG."""
     from PIL import Image
-    import io
-    import tempfile
 
     # Try PNG first, then TIFF (macOS screenshots use TIFF internally)
     for cls in ["PNGf", "TIFF", "JPEG"]:
         script = f'''
             try
-                set imgData to (the clipboard as «class {cls}»)
+                set imgData to (the clipboard as \u00abclass {cls}\u00bb)
                 set filePath to POSIX file "{dest}"
                 set fileRef to open for access filePath with write permission
                 write imgData to fileRef
@@ -93,7 +91,7 @@ def load_clipboard_image(path):
         png_path = Path(tmp.name)
 
     script = f'''
-        set the clipboard to (read POSIX file "{png_path}" as «class PNGf»)
+        set the clipboard to (read POSIX file "{png_path}" as \u00abclass PNGf\u00bb)
     '''
     subprocess.run(["osascript", "-e", script], check=True)
 
@@ -129,10 +127,10 @@ def display_image_kitty(path):
 
 def list_entries():
     """Return clipboard entries sorted newest first."""
-    if not CLIPBOARD_DIR.exists():
+    if not PB_DIR.exists():
         return []
     entries = [
-        f for f in CLIPBOARD_DIR.iterdir()
+        f for f in PB_DIR.iterdir()
         if f.is_file() and f.suffix in IMAGE_EXTENSIONS | TEXT_EXTENSIONS
         and ENTRY_PATTERN.match(f.name)
     ]
@@ -155,16 +153,46 @@ def find_entry(name):
     return matches[0]
 
 
-def cmd_copy(args):
-    """Capture system clipboard to a file."""
-    CLIPBOARD_DIR.mkdir(parents=True, exist_ok=True)
+def output_entry(entry):
+    """Output an entry: to stdout if piped, to system clipboard if interactive."""
+    if not sys.stdout.isatty():
+        # Pipeline mode: write contents to stdout
+        if entry.suffix in IMAGE_EXTENSIONS:
+            sys.stdout.buffer.write(entry.read_bytes())
+        else:
+            sys.stdout.write(entry.read_text())
+    else:
+        # Interactive: load into system clipboard
+        if entry.suffix in IMAGE_EXTENSIONS:
+            load_clipboard_image(entry)
+        else:
+            subprocess.run(["pbcopy"], input=entry.read_text(), text=True)
+        print(entry.name, file=sys.stderr)
 
+
+def cmd_copy(args):
+    """Capture text or image to a file in PB_DIR."""
+    PB_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not sys.stdin.isatty():
+        # Piped input: echo "hello" | pb copy
+        text = sys.stdin.read()
+        if not text:
+            print("No input from pipe", file=sys.stderr)
+            sys.exit(1)
+        filename = generate_filename(".txt")
+        dest = PB_DIR / filename
+        dest.write_text(text)
+        print(dest.name, file=sys.stderr)
+        return
+
+    # Interactive: read from system clipboard
     clip_type = get_clipboard_type()
     if clip_type == "image":
         filename = generate_filename(".png")
-        dest = CLIPBOARD_DIR / filename
+        dest = PB_DIR / filename
         if save_clipboard_image(dest):
-            print(dest.name)
+            print(dest.name, file=sys.stderr)
         else:
             print("Failed to capture image from clipboard", file=sys.stderr)
             sys.exit(1)
@@ -175,13 +203,13 @@ def cmd_copy(args):
             print("Clipboard is empty", file=sys.stderr)
             sys.exit(1)
         filename = generate_filename(".txt")
-        dest = CLIPBOARD_DIR / filename
+        dest = PB_DIR / filename
         dest.write_text(text)
-        print(dest.name)
+        print(dest.name, file=sys.stderr)
 
 
 def cmd_paste(args):
-    """Load a clipboard entry into the system clipboard."""
+    """Load a clipboard entry into the system clipboard or stdout."""
     if args.name:
         entry = find_entry(args.name)
     else:
@@ -191,11 +219,7 @@ def cmd_paste(args):
             sys.exit(1)
         entry = entries[0]
 
-    if entry.suffix in IMAGE_EXTENSIONS:
-        load_clipboard_image(entry)
-    else:
-        subprocess.run(["pbcopy"], input=entry.read_text(), text=True)
-    print(entry.name)
+    output_entry(entry)
 
 
 def cmd_list(args):
@@ -208,7 +232,7 @@ def cmd_list(args):
     names = "\n".join(e.name for e in entries)
     # pb-preview is a plain python3 script (no uv) for fast fzf preview
     preview_script = Path(__file__).resolve().parent / "pb-preview"
-    preview_cmd = f'{preview_script} {CLIPBOARD_DIR}/{{}}'
+    preview_cmd = f'{preview_script} {PB_DIR}/{{}}'
 
     try:
         result = subprocess.run(
@@ -221,12 +245,7 @@ def cmd_list(args):
 
     selected = result.stdout.strip()
     if selected:
-        entry = CLIPBOARD_DIR / selected
-        if entry.suffix in IMAGE_EXTENSIONS:
-            load_clipboard_image(entry)
-        else:
-            subprocess.run(["pbcopy"], input=entry.read_text(), text=True)
-        print(entry.name)
+        output_entry(PB_DIR / selected)
 
 
 def cmd_clean(args):
@@ -242,27 +261,53 @@ def cmd_clean(args):
         except (ValueError, IndexError):
             continue
         if ts < cutoff:
-            print(f"  {entry.name}")
+            print(f"  {entry.name}", file=sys.stderr)
             entry.unlink()
             removed += 1
-    print(f"Removed {removed} entries")
+    print(f"Removed {removed} entries", file=sys.stderr)
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog="pb",
-        description="Shared clipboard backed by ~/code/clipboard and synced via Syncthing",
+        description="""\
+Shared clipboard with file-backed history.
+
+Saves clipboard entries (text and images) to a directory that can be
+synced between machines. Works both interactively and in pipelines.
+
+Interactive usage:
+  pb copy              Save system clipboard to a file
+  pb paste             Load most recent entry into system clipboard
+  pb paste foo         Load entry matching "foo" into clipboard
+  pb list              Browse entries with fzf preview, paste selection
+
+Pipeline usage:
+  echo "hi" | pb copy  Save piped text to a file
+  pb paste | grep foo  Output most recent entry to stdout
+  pb paste > out.txt   Redirect entry contents to a file
+  pb list | wc -l      Browse with fzf, pipe selected entry to stdout
+
+Housekeeping:
+  pb clean --older-than 30  Remove entries older than 30 days
+
+Environment:
+  PB_DIR    Storage directory (default: ~/code/pb)""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("copy", help="Capture system clipboard to a file")
+    sub.add_parser("copy", help="Save clipboard or piped stdin to a file")
 
-    paste_parser = sub.add_parser("paste", help="Load a clipboard entry into system clipboard")
-    paste_parser.add_argument("name", nargs="?", help="Partial name to match")
+    paste_parser = sub.add_parser("paste",
+        help="Load entry into clipboard (interactive) or stdout (piped)")
+    paste_parser.add_argument("name", nargs="?",
+        help="Partial name to match (default: most recent)")
 
-    sub.add_parser("list", help="Browse clipboard entries with fzf preview")
+    sub.add_parser("list",
+        help="Browse entries with fzf, paste or pipe selection")
 
-    clean_parser = sub.add_parser("clean", help="Remove old clipboard entries")
+    clean_parser = sub.add_parser("clean", help="Remove old entries")
     clean_parser.add_argument("--older-than", type=int, required=True,
                               help="Remove entries older than N days")
 
