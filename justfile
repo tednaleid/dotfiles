@@ -18,9 +18,10 @@ default:
     @echo "  just claude    - set up claude AI config"
     @echo "  just casks     - install/upgrade homebrew casks"
     @echo "  just syncthing - set up syncthing ignore patterns for ~/code"
+    @echo "  just pb        - set up pb shared clipboard tool"
 
 # set up all dotfiles
-all: git zsh ghostty atuin claude casks syncthing
+all: git zsh ghostty atuin claude casks syncthing pb
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 _copy_dir source dest:
@@ -248,3 +249,10 @@ syncthing-instructions:
     @echo ""
     @echo "Verify sync with: sumpig fingerprint ~/code"
     @echo "Compare devices:  sumpig compare ~/code/.sumpig-fingerprints/*.txt"
+
+# set up pb shared clipboard tool
+pb:
+    @mkdir -p {{home_directory()}}/.local/bin
+    @mkdir -p {{home_directory()}}/code/clipboard
+    @just _symlink {{justfile_directory()}}/pb {{home_directory()}}/.local/bin/pb
+    @just _symlink {{justfile_directory()}}/pb-preview {{home_directory()}}/.local/bin/pb-preview
