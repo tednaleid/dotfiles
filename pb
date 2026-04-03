@@ -241,6 +241,10 @@ def cmd_list(args):
     except FileNotFoundError:
         print("fzf is required for pb list (brew install fzf)", file=sys.stderr)
         sys.exit(1)
+    finally:
+        # Clear any Kitty graphics left on screen by the preview
+        sys.stdout.write("\033_Ga=d\033\\")
+        sys.stdout.flush()
 
     selected = result.stdout.strip()
     if selected:
