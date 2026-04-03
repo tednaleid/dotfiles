@@ -16,7 +16,8 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-PB_DIR = Path(os.environ.get("PB_DIR", Path.home() / "code" / "pb"))
+DEFAULT_PB_DIR = Path.home() / "Library" / "CloudStorage" / "Dropbox" / "pb"
+PB_DIR = Path(os.environ.get("PB_DIR", DEFAULT_PB_DIR))
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".gif"}
 TEXT_EXTENSIONS = {".txt"}
 # Matches our naming convention: 2026-04-02T17-05-23_cool-slug.ext
@@ -172,8 +173,6 @@ def output_entry(entry):
 
 def cmd_copy(args):
     """Capture text or image to a file in PB_DIR."""
-    PB_DIR.mkdir(parents=True, exist_ok=True)
-
     if not sys.stdin.isatty():
         # Piped input: echo "hello" | pb copy
         text = sys.stdin.read()
@@ -292,7 +291,7 @@ Housekeeping:
   pb clean --older-than 30  Remove entries older than 30 days
 
 Environment:
-  PB_DIR    Storage directory (default: ~/code/pb)""",
+  PB_DIR    Storage directory (default: ~/Library/CloudStorage/Dropbox/pb)""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command")
@@ -312,6 +311,15 @@ Environment:
                               help="Remove entries older than N days")
 
     args = parser.parse_args()
+
+    if not PB_DIR.exists():
+        print(
+            f"Directory does not exist: {PB_DIR}\n"
+            f"Create it with: mkdir -p '{PB_DIR}'\n"
+            f"Or set PB_DIR to use a different location.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if args.command == "copy":
         cmd_copy(args)
