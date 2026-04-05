@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["coolname", "Pillow"]
+# dependencies = ["coolname", "Pillow", "rich", "watchdog"]
 # ///
 
 # ABOUTME: shared clipboard tool with file-backed history, works in pipelines
@@ -20,17 +20,31 @@ DEFAULT_PB_DIR = Path.home() / "Library" / "CloudStorage" / "Dropbox" / "pb"
 PB_DIR = Path(os.environ.get("PB_DIR", DEFAULT_PB_DIR))
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".gif"}
 TEXT_EXTENSIONS = {".txt"}
-# Matches our naming convention: 2026-04-02T17-05-23_cool-slug.ext
-ENTRY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}_.+\.\w+$")
+# Matches naming convention (millis optional for backward compat):
+#   2026-04-02T17-05-23_slug.ext         (legacy, second precision)
+#   2026-04-02T17-05-23.456_slug.ext     (new, millisecond precision)
+ENTRY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:\.\d{3})?_.+\.\w+$")
 
 
 def generate_filename(ext):
-    """Generate a unique filename with timestamp and coolname slug."""
+    """Generate a unique filename with ms-precision timestamp and coolname slug."""
     import coolname
 
-    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    now = datetime.now()
+    ts = now.strftime("%Y-%m-%dT%H-%M-%S") + f".{now.microsecond // 1000:03d}"
     slug = coolname.generate_slug(2)
     return f"{ts}_{slug}{ext}"
+
+
+def parse_entry_timestamp(name):
+    """Parse datetime from a pb entry filename. Handles legacy and ms formats."""
+    ts_str = name.split("_")[0]
+    for fmt in ("%Y-%m-%dT%H-%M-%S.%f", "%Y-%m-%dT%H-%M-%S"):
+        try:
+            return datetime.strptime(ts_str, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def get_clipboard_type():
@@ -292,17 +306,199 @@ def cmd_clean(args):
     entries = list_entries()
     removed = 0
     for entry in entries:
-        # Parse timestamp from filename: 2026-04-02T17-05-23_slug.ext
-        try:
-            ts_str = entry.stem.split("_")[0]
-            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%S")
-        except (ValueError, IndexError):
+        ts = parse_entry_timestamp(entry.name)
+        if ts is None:
             continue
         if ts < cutoff:
             print(f"  {entry.name}", file=sys.stderr)
             entry.unlink()
             removed += 1
     print(f"Removed {removed} entries", file=sys.stderr)
+
+
+SIZE_BUCKETS = [
+    ("tiny",   0,                 1024),
+    ("small",  1024,              100 * 1024),
+    ("medium", 100 * 1024,        1024 * 1024),
+    ("large",  1024 * 1024,       10 * 1024 * 1024),
+    ("huge",   10 * 1024 * 1024,  float("inf")),
+]
+
+
+def bucket_for(size):
+    for name, lo, hi in SIZE_BUCKETS:
+        if lo <= size < hi:
+            return name
+    return "huge"
+
+
+def format_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def cmd_watch(args):
+    """Watch PB_DIR for new arrivals with live split-screen view + summary stats."""
+    import time
+    from collections import deque
+    from watchdog.events import FileSystemEventHandler
+    from watchdog.observers import Observer
+    from rich.console import Console
+    from rich.layout import Layout
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.table import Table
+
+    console = Console()
+    stats = {name: [] for name, _, _ in SIZE_BUCKETS}
+    recent = deque(maxlen=20)
+    latest_file = {"path": None, "size": 0}
+
+    class Handler(FileSystemEventHandler):
+        def __init__(self):
+            super().__init__()
+            self.seen = {e.name for e in list_entries()}
+
+        def _process(self, path_str):
+            arrival = datetime.now()
+            path = Path(path_str)
+            if path.name in self.seen:
+                return
+            if not ENTRY_PATTERN.match(path.name):
+                return
+            ts = parse_entry_timestamp(path.name)
+            if ts is None:
+                return
+            try:
+                size = path.stat().st_size
+            except OSError:
+                return
+            self.seen.add(path.name)
+            latency = (arrival - ts).total_seconds()
+            legacy = "." not in path.name.split("_")[0]
+            bucket = bucket_for(size)
+            stats[bucket].append((latency, size, path.name, legacy))
+            recent.append((arrival, latency, size, path.name, legacy))
+            latest_file["path"] = path
+            latest_file["size"] = size
+
+        def on_created(self, event):
+            if not event.is_directory:
+                self._process(event.src_path)
+
+        def on_moved(self, event):
+            if not event.is_directory:
+                self._process(event.dest_path)
+
+    def build_log():
+        t = Table.grid(padding=(0, 1), expand=True)
+        t.add_column("arrival", style="dim", width=12)
+        t.add_column("latency", justify="right", width=10)
+        t.add_column("size", justify="right", width=10)
+        t.add_column("filename", overflow="ellipsis", no_wrap=True)
+        t.add_row("arrival", "latency", "size", "filename")
+        for arrival, lat, size, name, legacy in recent:
+            mark = "[yellow]*[/]" if legacy else ""
+            t.add_row(
+                arrival.strftime("%H:%M:%S.") + f"{arrival.microsecond//1000:03d}",
+                f"[cyan]{lat:.3f}s[/]{mark}",
+                f"[magenta]{format_size(size)}[/]",
+                name,
+            )
+        total = sum(len(v) for v in stats.values())
+        return Panel(t, title=f"Arrivals ({total} total)", border_style="blue")
+
+    def build_preview():
+        path = latest_file["path"]
+        if path is None:
+            return Panel("[dim]Waiting for first arrival...[/]",
+                         title="Latest", border_style="green")
+        size_str = format_size(latest_file["size"])
+        if path.suffix.lower() in IMAGE_EXTENSIONS:
+            body = f"[dim][image: {size_str}][/]"
+        else:
+            try:
+                lines = path.read_text(errors="replace").splitlines()[:15]
+                body = "\n".join(lines) if lines else "[dim](empty)[/]"
+            except OSError as e:
+                body = f"[red]read error: {e}[/]"
+        return Panel(body, title=f"Latest: {path.name}", border_style="green")
+
+    layout = Layout()
+    layout.split_column(
+        Layout(name="log", ratio=2),
+        Layout(name="preview", ratio=1),
+    )
+
+    observer = Observer()
+    observer.schedule(Handler(), str(PB_DIR), recursive=False)
+    observer.start()
+
+    console.print(
+        f"[dim]pb watch (FSEvents on {PB_DIR}). Ctrl-C for stats.[/]"
+    )
+
+    try:
+        with Live(layout, console=console, refresh_per_second=10, screen=True):
+            while True:
+                time.sleep(0.1)
+                layout["log"].update(build_log())
+                layout["preview"].update(build_preview())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        observer.stop()
+        observer.join()
+
+    _print_summary(console, stats)
+
+
+def _print_summary(console, stats):
+    from rich.table import Table
+
+    all_lats = [lat for bucket in stats.values() for (lat, *_) in bucket]
+    if not all_lats:
+        console.print("[dim]No new arrivals observed.[/]")
+        return
+
+    overall = Table(title="Overall sync latency", title_style="bold")
+    overall.add_column("count", justify="right")
+    overall.add_column("min", justify="right", style="green")
+    overall.add_column("mean", justify="right", style="cyan")
+    overall.add_column("max", justify="right", style="red")
+    overall.add_row(
+        str(len(all_lats)),
+        f"{min(all_lats):.3f}s",
+        f"{sum(all_lats)/len(all_lats):.3f}s",
+        f"{max(all_lats):.3f}s",
+    )
+    console.print(overall)
+
+    bybucket = Table(title="By file size", title_style="bold")
+    bybucket.add_column("bucket")
+    bybucket.add_column("range")
+    bybucket.add_column("count", justify="right")
+    bybucket.add_column("min", justify="right", style="green")
+    bybucket.add_column("mean", justify="right", style="cyan")
+    bybucket.add_column("max", justify="right", style="red")
+    for name, lo, hi in SIZE_BUCKETS:
+        rows = stats[name]
+        if not rows:
+            continue
+        lats = [r[0] for r in rows]
+        hi_str = format_size(hi) if hi != float("inf") else "+"
+        bybucket.add_row(
+            name,
+            f"{format_size(lo)} – {hi_str}",
+            str(len(rows)),
+            f"{min(lats):.3f}s",
+            f"{sum(lats)/len(lats):.3f}s",
+            f"{max(lats):.3f}s",
+        )
+    console.print(bybucket)
 
 
 def main():
@@ -329,6 +525,9 @@ Pipeline usage:
 Housekeeping:
   pb clean --older-than 30  Remove entries older than 30 days
 
+Sync latency testing:
+  pb watch                  Watch PB_DIR, report sync latency as files arrive
+
 Environment:
   PB_DIR    Storage directory (default: ~/Library/CloudStorage/Dropbox/pb)""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -353,6 +552,9 @@ Environment:
     clean_parser.add_argument("--older-than", type=int, required=True,
                               help="Remove entries older than N days")
 
+    sub.add_parser("watch",
+        help="Watch PB_DIR for new arrivals, measure sync latency")
+
     args = parser.parse_args()
 
     if not PB_DIR.exists():
@@ -374,6 +576,8 @@ Environment:
         cmd_preview(args)
     elif args.command == "clean":
         cmd_clean(args)
+    elif args.command == "watch":
+        cmd_watch(args)
     else:
         parser.print_help()
 
