@@ -234,6 +234,24 @@ def cmd_paste(args):
     output_entry(entry)
 
 
+def cmd_preview(args):
+    """Preview a clipboard entry (used internally by fzf)."""
+    path = Path(args.file)
+    if not path.exists():
+        print(f"File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Clear any previous Kitty graphics before rendering new content
+    sys.stdout.write("\033_Ga=d\033\\")
+    sys.stdout.flush()
+
+    if path.suffix.lower() in IMAGE_EXTENSIONS:
+        display_image_kitty(path)
+    else:
+        lines = path.read_text().splitlines()[:100]
+        print("\n".join(lines))
+
+
 def cmd_list(args):
     """Browse clipboard entries with fzf preview."""
     entries = list_entries()
@@ -242,9 +260,8 @@ def cmd_list(args):
         sys.exit(1)
 
     names = "\n".join(e.name for e in entries)
-    # pb-preview is a plain python3 script (no uv) for fast fzf preview
-    preview_script = Path(__file__).resolve().parent / "pb-preview"
-    preview_cmd = f'{preview_script} {PB_DIR}/{{}}'
+    pb_script = Path(__file__).resolve()
+    preview_cmd = f'{pb_script} preview {PB_DIR}/{{}}'
 
     # Scroll current content into scrollback so fzf renders cleanly with Kitty graphics
     rows = os.get_terminal_size().lines
@@ -328,6 +345,10 @@ Environment:
     sub.add_parser("list",
         help="Browse entries with fzf, paste or pipe selection")
 
+    preview_parser = sub.add_parser("preview",
+        help="Preview a file (used internally by fzf)")
+    preview_parser.add_argument("file", help="File to preview")
+
     clean_parser = sub.add_parser("clean", help="Remove old entries")
     clean_parser.add_argument("--older-than", type=int, required=True,
                               help="Remove entries older than N days")
@@ -349,6 +370,8 @@ Environment:
         cmd_paste(args)
     elif args.command == "list":
         cmd_list(args)
+    elif args.command == "preview":
+        cmd_preview(args)
     elif args.command == "clean":
         cmd_clean(args)
     else:
