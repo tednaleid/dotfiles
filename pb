@@ -174,16 +174,26 @@ def output_entry(entry):
 def cmd_copy(args):
     """Capture text or image to a file in PB_DIR."""
     if not sys.stdin.isatty():
-        # Piped input: echo "hello" | pb copy
-        text = sys.stdin.read()
-        if not text:
+        # Piped input: echo "hello" | pb copy  OR  cat img.png | pb copy
+        data = sys.stdin.buffer.read()
+        if not data:
             print("No input from pipe", file=sys.stderr)
             sys.exit(1)
-        filename = generate_filename(".txt")
+        if data[:8] == b'\x89PNG\r\n\x1a\n':
+            ext = ".png"
+        elif data[:3] == b'\xff\xd8\xff':
+            ext = ".jpg"
+        elif data[:4] in (b'GIF8',):
+            ext = ".gif"
+        elif data[:4] in (b'II\x2a\x00', b'MM\x00\x2a'):
+            ext = ".tiff"
+        else:
+            ext = ".txt"
+        filename = generate_filename(ext)
         dest = PB_DIR / filename
-        dest.write_text(text)
+        dest.write_bytes(data)
         print(dest.name, file=sys.stderr)
-        sys.stdout.write(text)
+        sys.stdout.buffer.write(data)
         return
 
     # Interactive: read from system clipboard
@@ -235,6 +245,11 @@ def cmd_list(args):
     # pb-preview is a plain python3 script (no uv) for fast fzf preview
     preview_script = Path(__file__).resolve().parent / "pb-preview"
     preview_cmd = f'{preview_script} {PB_DIR}/{{}}'
+
+    # Scroll current content into scrollback so fzf renders cleanly with Kitty graphics
+    rows = os.get_terminal_size().lines
+    sys.stdout.write("\n" * rows + "\033[H")
+    sys.stdout.flush()
 
     try:
         result = subprocess.run(
