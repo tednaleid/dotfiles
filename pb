@@ -47,6 +47,19 @@ def parse_entry_timestamp(name):
     return None
 
 
+DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800, "y": 31536000}
+
+
+def parse_duration(s):
+    """Parse a duration like '30d', '2w', '6h' into a timedelta."""
+    m = re.match(r"^(\d+)([smhdwy])$", s.strip())
+    if not m:
+        raise argparse.ArgumentTypeError(
+            f"Invalid duration '{s}'. Use: 30s, 15m, 6h, 30d, 2w, 1y"
+        )
+    return timedelta(seconds=int(m.group(1)) * DURATION_UNITS[m.group(2)])
+
+
 def get_clipboard_type():
     """Detect what type of data is on the system clipboard."""
     result = subprocess.run(
@@ -301,8 +314,8 @@ def cmd_list(args):
 
 
 def cmd_clean(args):
-    """Remove clipboard entries older than N days."""
-    cutoff = datetime.now() - timedelta(days=args.older_than)
+    """Remove clipboard entries older than the given duration."""
+    cutoff = datetime.now() - args.older_than
     entries = list_entries()
     removed = 0
     for entry in entries:
@@ -523,7 +536,7 @@ Pipeline usage:
   pb list | wc -l      Browse with fzf, pipe selected entry to stdout
 
 Housekeeping:
-  pb clean --older-than 30  Remove entries older than 30 days
+  pb clean --older-than 30d  Remove entries older than 30 days (supports s/m/h/d/w/y)
 
 Sync latency testing:
   pb watch                  Watch PB_DIR, report sync latency as files arrive
@@ -549,8 +562,8 @@ Environment:
     preview_parser.add_argument("file", help="File to preview")
 
     clean_parser = sub.add_parser("clean", help="Remove old entries")
-    clean_parser.add_argument("--older-than", type=int, required=True,
-                              help="Remove entries older than N days")
+    clean_parser.add_argument("--older-than", type=parse_duration, required=True,
+                              help="Duration: 30s, 15m, 6h, 30d, 2w, 1y")
 
     sub.add_parser("watch",
         help="Watch PB_DIR for new arrivals, measure sync latency")
