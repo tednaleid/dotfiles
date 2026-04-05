@@ -183,6 +183,7 @@ def cmd_copy(args):
         dest = PB_DIR / filename
         dest.write_text(text)
         print(dest.name, file=sys.stderr)
+        sys.stdout.write(text)
         return
 
     # Interactive: read from system clipboard
@@ -192,6 +193,7 @@ def cmd_copy(args):
         dest = PB_DIR / filename
         if save_clipboard_image(dest):
             print(dest.name, file=sys.stderr)
+            sys.stdout.buffer.write(dest.read_bytes())
         else:
             print("Failed to capture image from clipboard", file=sys.stderr)
             sys.exit(1)
@@ -205,6 +207,7 @@ def cmd_copy(args):
         dest = PB_DIR / filename
         dest.write_text(text)
         print(dest.name, file=sys.stderr)
+        sys.stdout.write(text)
 
 
 def cmd_paste(args):
