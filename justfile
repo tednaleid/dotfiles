@@ -19,6 +19,7 @@ default:
     @echo "  just claude    - set up claude AI config"
     @echo "  just casks     - install/upgrade homebrew casks"
     @echo "  just pb        - set up pb shared clipboard tool"
+    @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
 all: git zsh ssh ghostty atuin claude casks pb
@@ -184,6 +185,12 @@ casks:
             brew install --cask "$cask"
         fi
     done
+
+# add a spacer tile to the macOS dock (run once per spacer you want)
+dock-spacer:
+    defaults write com.apple.dock persistent-apps -array-add '{tile-data={}; tile-type="spacer-tile";}'
+    sleep 1
+    killall Dock
 
 # set up pb shared clipboard tool
 pb:
