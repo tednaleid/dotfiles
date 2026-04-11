@@ -19,10 +19,29 @@ Or set up individual components:
 ```
 just git       # git config and global gitignore
 just zsh       # zshrc and zsh.d
+just ssh       # ssh config and per-machine key (see below)
 just ghostty   # ghostty terminal config and shaders
 just atuin     # atuin shell history config
 just claude    # claude AI config (see below)
 ```
+
+## SSH
+
+The `just ssh` recipe sets up `~/.ssh/config` as a symlink and ensures a per-machine `~/.ssh/id_ed25519` key exists.
+
+The model is **one key per machine**. Private keys never sync between machines — each Mac generates its own on first run and the public key gets registered with the services that need it (GitHub, any servers). When you lose a machine, you revoke just that one key.
+
+On first run on a new Mac, the recipe will:
+
+1. Create `~/.ssh` with `0700` perms
+2. Symlink `~/.ssh/config` to `ssh/config` in this repo
+3. If no `~/.ssh/id_ed25519` exists, run `ssh-keygen -t ed25519` interactively (pick a strong passphrase and stash it in the macOS Passwords app so it syncs via iCloud)
+4. Cache the passphrase in the login keychain via `ssh-add --apple-use-keychain`
+5. Copy the public key to the clipboard and print links to register it with GitHub
+
+Subsequent runs are idempotent: if the key already exists, the recipe just prints the public key for reference.
+
+The `ssh/config` here uses `AddKeysToAgent yes` and `UseKeychain yes`, so once the passphrase is cached in the login keychain you won't be re-prompted on subsequent sessions.
 
 ## Claude Code
 

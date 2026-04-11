@@ -13,6 +13,7 @@ default:
     @echo "  just all       - set up all dotfiles and install casks"
     @echo "  just git       - set up git config"
     @echo "  just zsh       - set up zsh config"
+    @echo "  just ssh       - set up ssh config and per-machine key"
     @echo "  just ghostty   - set up ghostty terminal config"
     @echo "  just atuin     - set up atuin shell history config"
     @echo "  just claude    - set up claude AI config"
@@ -20,7 +21,7 @@ default:
     @echo "  just pb        - set up pb shared clipboard tool"
 
 # set up all dotfiles
-all: git zsh ghostty atuin claude casks pb
+all: git zsh ssh ghostty atuin claude casks pb
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 _copy_dir source dest:
@@ -67,6 +68,44 @@ zshrc:
 
 zsh-dir:
     @just _symlink {{justfile_directory()}}/zsh.d {{home_directory()}}/.zsh.d
+
+# set up ssh config and ensure a per-machine ed25519 key exists
+ssh: ssh-dir ssh-config ssh-key
+
+ssh-dir:
+    @mkdir -p {{home_directory()}}/.ssh
+    @chmod 700 {{home_directory()}}/.ssh
+
+ssh-config:
+    @just _symlink {{justfile_directory()}}/ssh/config {{home_directory()}}/.ssh/config
+
+# generate a per-machine ed25519 key if one doesn't already exist
+ssh-key:
+    #!/usr/bin/env bash
+    set -e
+    key={{home_directory()}}/.ssh/id_ed25519
+    if [ -f "$key" ]; then
+        echo "✓ $key already exists"
+        echo ""
+        echo "public key:"
+        cat "$key.pub"
+        exit 0
+    fi
+    echo "→ Generating new ed25519 key for $USER@$(hostname -s)"
+    echo "  (you will be prompted for a passphrase — pick a strong one and stash it in the Passwords app)"
+    ssh-keygen -t ed25519 -C "$USER@$(hostname -s)" -f "$key"
+    ssh-add --apple-use-keychain "$key"
+    pbcopy < "$key.pub"
+    echo ""
+    echo "✓ key generated, passphrase stored in login keychain, public key copied to clipboard"
+    echo ""
+    echo "public key:"
+    cat "$key.pub"
+    echo ""
+    echo "add this key to:"
+    echo "  github auth:    https://github.com/settings/ssh/new"
+    echo "  github signing: https://github.com/settings/ssh/new?type=signing  (if you sign commits)"
+    echo "  any servers you ssh into (append to their ~/.ssh/authorized_keys)"
 
 # set up claude configuration
 claude: claude-md claude-skills claude-settings claude-install-plugins
