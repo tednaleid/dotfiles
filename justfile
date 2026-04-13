@@ -2,7 +2,7 @@
 # ABOUTME: also installs homebrew casks and shared clipboard tool
 
 # homebrew casks to install/upgrade (use full tap path for custom taps)
-_casks := "tednaleid/montty/montty tednaleid/limn/limn"
+_casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/grounded"
 
 # default recipe - show help
 default:
