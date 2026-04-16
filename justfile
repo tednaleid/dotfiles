@@ -147,6 +147,15 @@ claude-install-plugins:
         claude plugin marketplace add astral-sh/claude-code-plugins
     fi
     claude plugin install astral@astral-sh
+    claude plugin install skill-creator@claude-plugins-official
+
+    if claude plugin marketplace list 2>&1 | grep -q 'nicknisi/claude-plugins'; then
+        echo "✓ nicknisi marketplace already installed"
+    else
+        echo "→ Adding nicknisi marketplace"
+        claude plugin marketplace add nicknisi/claude-plugins
+    fi
+    claude plugin install ideation@nicknisi
 
 # set up ghostty terminal configuration
 ghostty: ghostty-config ghostty-shaders
