@@ -5,8 +5,31 @@
 font-size=20
 font-family="Fira Code"
 
-theme="dracula"
+# theme="liquid carbon"
+# theme="raycast dark"
+# theme="spacegray eighties"
+theme="tomorrow night eighties"
+
+# theme="dracula"
 # theme="lovelace"
+# theme="desert"
+# theme="dimidium"
+# theme="gitlab dark"
+# theme="japanesque"
+# theme="lab fox"
+# theme="later this evening"
+
+
+# theme="material darker"
+# theme="material design colors"
+# theme="monokai pro"
+# theme="monokai remastered"
+# theme="moonfly"
+# theme="neutron"
+# theme="nord"
+# theme="popping and locking"
+# theme="spacegray bright"
+# theme="starlight"
 
 # https://ghostty.org/docs/config/reference#macos-icon
 macos-icon="holographic"
