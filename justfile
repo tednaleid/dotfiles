@@ -180,12 +180,18 @@ atuin-config:
     @mkdir -p {{home_directory()}}/.config/atuin
     @just _symlink {{justfile_directory()}}/atuin_config.toml {{home_directory()}}/.config/atuin/config.toml
 
-# set up veer global rules (binary install lives in `formulae`)
-veer: veer-config
+# set up veer global rules and register the PreToolUse hook
+# (binary install lives in `formulae`)
+veer: veer-config veer-install
 
 veer-config:
     @mkdir -p {{home_directory()}}/.config/veer
     @just _symlink {{justfile_directory()}}/veer_config.toml {{home_directory()}}/.config/veer/config.toml
+
+# register the veer PreToolUse hook in ~/.claude/settings.json
+# (idempotent: re-running updates the hook entry to current version/flags)
+veer-install:
+    @veer install --global
 
 # install or upgrade homebrew casks
 casks:

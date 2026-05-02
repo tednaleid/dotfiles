@@ -23,7 +23,7 @@ just ssh       # ssh config and per-machine key (see below)
 just ghostty   # ghostty terminal config and shaders
 just atuin     # atuin shell history config
 just claude    # claude AI config (see below)
-just veer      # veer global PreToolUse rules (see below)
+just veer      # veer global rules + PreToolUse hook (see below)
 just formulae  # install homebrew formulae (sumpig, veer)
 ```
 
@@ -66,7 +66,12 @@ An optional env var controls the context gradient:
 
 ## veer
 
-`just veer` symlinks `veer_config.toml` to `~/.config/veer/config.toml` -- the global rules veer applies to every project unless a project's own `.veer/config.toml` overrides them. The veer binary itself is installed by `just formulae` (or comes from a local dev build on PATH).
+`just veer` does two things:
+
+1. Symlinks `veer_config.toml` to `~/.config/veer/config.toml` -- the global rules veer applies to every project unless a project's own `.veer/config.toml` overrides them.
+2. Runs `veer install --global` to register the `veer check` PreToolUse hook in `~/.claude/settings.json`. Idempotent; re-runs update the hook entry to the current version/flags. Restart Claude Code after the first install for the hook to take effect.
+
+The veer binary must be on PATH for step 2 -- run `just formulae` (or `just all`) on a fresh machine.
 
 Because the live config is a symlink into the repo, `veer add --global` and `veer remove --global` write through to `veer_config.toml`. CLI edits land in the dotfiles repo automatically, ready to commit.
 
