@@ -1,0 +1,40 @@
+# Global veer rules - applied to every project unless overridden.
+# Edit directly, or use `veer add --global` / `veer remove --global`.
+# Run `veer list` to see the merged (project + global) view.
+
+# Supply-chain guard: never let the agent fetch and execute a remote script
+# in one step. Force it to download, inspect, then run.
+[[rule]]
+id = "no-curl-pipe-shell"
+name = "Block curl piped to a shell"
+action = "reject"
+message = "Don't pipe curl to bash/sh -- download, inspect, then execute."
+[rule.match]
+command_all = ["curl", "bash"]
+
+# Claude Code workaround: it treats `echo "---"` as "quoted characters in
+# flag names" and prompts for approval; the unquoted `echo ---` is identical
+# at the shell level and approval-free. Surgical splice preserves anything
+# around it in compound commands.
+[[rule]]
+id = "echo-separator-unquote"
+name = "Drop quotes around --- separators to skip approval prompts"
+action = "rewrite"
+rewrite_to = "echo ---"
+[rule.match]
+command = "echo"
+arg = "---"
+
+# Plan-quality rule: reject ExitPlanMode when the plan body contains
+# "actually". The word almost always indicates the agent changed direction
+# mid-plan, leaving the document with a contradiction that confuses whoever
+# implements it.
+[[rule]]
+id = "no-actually-in-plans"
+name = "Reject plans that contain 'actually'"
+tool = "ExitPlanMode"
+action = "reject"
+message = "Plans must not contain 'actually' -- it usually means you changed direction mid-plan. Rewrite so the plan reads as one coherent direction."
+[rule.match]
+content_regex = "[Aa]ctually"
+

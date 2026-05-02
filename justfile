@@ -4,6 +4,9 @@
 # homebrew casks to install/upgrade (use full tap path for custom taps)
 _casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/grounded"
 
+# homebrew formulae to install/upgrade (use full tap path for custom taps)
+_formulae := "tednaleid/sumpig/sumpig tednaleid/veer/veer"
+
 # default recipe - show help
 default:
     @echo "To set up missing symlinks in your home directory, run: "
@@ -17,12 +20,14 @@ default:
     @echo "  just ghostty   - set up ghostty terminal config"
     @echo "  just atuin     - set up atuin shell history config"
     @echo "  just claude    - set up claude AI config"
+    @echo "  just veer      - set up veer global rules"
     @echo "  just casks     - install/upgrade homebrew casks"
+    @echo "  just formulae  - install/upgrade homebrew formulae"
     @echo "  just pb        - set up pb shared clipboard tool"
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks pb
+all: git zsh ssh ghostty atuin claude casks formulae pb veer
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 _copy_dir source dest:
@@ -175,6 +180,13 @@ atuin-config:
     @mkdir -p {{home_directory()}}/.config/atuin
     @just _symlink {{justfile_directory()}}/atuin_config.toml {{home_directory()}}/.config/atuin/config.toml
 
+# set up veer global rules (binary install lives in `formulae`)
+veer: veer-config
+
+veer-config:
+    @mkdir -p {{home_directory()}}/.config/veer
+    @just _symlink {{justfile_directory()}}/veer_config.toml {{home_directory()}}/.config/veer/config.toml
+
 # install or upgrade homebrew casks
 casks:
     #!/usr/bin/env bash
@@ -192,6 +204,26 @@ casks:
         else
             echo "→ Installing $name"
             brew install --cask "$cask"
+        fi
+    done
+
+# install or upgrade homebrew formulae
+formulae:
+    #!/usr/bin/env bash
+    set -e
+    for formula in {{_formulae}}; do
+        name="${formula##*/}"
+        if brew list "$name" &>/dev/null; then
+            output=$(brew upgrade "$formula" 2>&1) || true
+            if echo "$output" | grep -q "already installed"; then
+                echo "✓ $name is up to date"
+            else
+                echo "↑ $name upgraded"
+                echo "$output"
+            fi
+        else
+            echo "→ Installing $name"
+            brew install "$formula"
         fi
     done
 

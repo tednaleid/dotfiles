@@ -23,6 +23,8 @@ just ssh       # ssh config and per-machine key (see below)
 just ghostty   # ghostty terminal config and shaders
 just atuin     # atuin shell history config
 just claude    # claude AI config (see below)
+just veer      # veer global PreToolUse rules (see below)
+just formulae  # install homebrew formulae (sumpig, veer)
 ```
 
 ## SSH
@@ -61,3 +63,16 @@ The `claude-settings` recipe merges keys from `claude-settings-patch.json` into 
 An optional env var controls the context gradient:
 
 * `CLAUDE_CONTEXT_GRADIENT` -- three comma-separated percentages: where the color stops being green, where it reaches yellow, and where it reaches red. Default `15,40,70`.
+
+## veer
+
+`just veer` symlinks `veer_config.toml` to `~/.config/veer/config.toml` -- the global rules veer applies to every project unless a project's own `.veer/config.toml` overrides them. The veer binary itself is installed by `just formulae` (or comes from a local dev build on PATH).
+
+Because the live config is a symlink into the repo, `veer add --global` and `veer remove --global` write through to `veer_config.toml`. CLI edits land in the dotfiles repo automatically, ready to commit.
+
+On the first machine to adopt this, move the existing real file in before running the recipe (the symlink helper skips if the destination already exists):
+
+```
+mv ~/.config/veer/config.toml ./veer_config.toml
+just veer
+```
