@@ -42,11 +42,19 @@ if type brew &>/dev/null; then
 fi
 
 # Speed up completion init, see: https://gist.github.com/ctechols/ca1035271ad134841284
+# Full security audit + dump rebuild at most once per 24h; otherwise load the
+# cached dump with -C (skips the audit). The glob is evaluated in the array
+# assignment (it would NOT expand inside [[ ]]); the array is non-empty only when
+# a fresh dump exists. touch advances the mtime so the fast path keeps engaging
+# even when compinit leaves the dump's contents unchanged.
 autoload -Uz compinit
-for dump in ~/.zcompdump(N.mh+24); do
+local -a fresh_zcompdump=( ~/.zcompdump(N.mh-24) )
+if (( $#fresh_zcompdump )); then
+  compinit -C
+else
   compinit
-done
-compinit -C
+  touch ~/.zcompdump
+fi
 
 # unsetopt menucomplete
 unsetopt flowcontrol
@@ -295,13 +303,6 @@ local this_host="${HOME}/.zsh.d/${SIMPLE_HOST}.sh"
 # sometimes, we have things we don't want checked into git, so also support a nonshared.sh as an alternative
 local nonsharedfile="${HOME}/.zsh.d/nonshared.sh"
 [[ -e ${nonsharedfile} ]] && source ${nonsharedfile}
-
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
-export SDKMAN_DIR="$HOME/.sdkman"
-[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
