@@ -67,51 +67,10 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 
 # PROMPT ############################################################ 
 
-setopt prompt_subst
-
-# left prompt is just a > that is colored red if there are background jobs
-local promptnormal="> %{$reset_color%}"
-local promptjobs="%{$fg_bold[red]%}> %{$reset_color%}"
-PROMPT='%(1j.$promptjobs.$promptnormal)'
-
-# static prompt above where the cursor is
-git_status_short() {
-  if [[ ! -z $(git status --porcelain 2> /dev/null | tail -n1) ]]; then
-    echo "%{$fg_bold[red]%} ✘%{$reset_color%}"
-  else
-    echo "%{$fg_bold[green]%} ✔%{$reset_color%}"
-  fi
-}
-
-git_prompt_info() {
-  # get the branch name if we're in a git repo, otherwise return
-  ref=$(git symbolic-ref HEAD 2> /dev/null) || \
-  ref=$(git rev-parse --short HEAD 2> /dev/null) || return
-
-  # we're in a git repo, emit the branch name and 1 character status
-  echo " %{$fg_bold[green]%}${ref#refs/heads/}$(git_status_short)%{$reset_color%}"
-}
-
-if [[ -d ~/.aws ]]; then
-  aws_prompt_info() {
-    if [[ -n "$AWS_PROFILE" ]]; then
-      local color=magenta
-      [[ "$AWS_PROFILE" == *prod* ]] && color=red
-      echo " %{$fg[${color}]%}aws:${AWS_PROFILE}%{$reset_color%}"
-    fi
-  }
-else
-  aws_prompt_info() { }
-fi
-
-local timestamp="%{$fg[blue]%}%D{%H:%M:%S}%{$reset_color%}"
-local working_directory=" %{$fg_bold[yellow]%}%(5~|%-2~/.../%2~|%4~)%{$reset_color%}"
-local exit_code="%(?.. [%{$fg_bold[red]%}%?%{$reset_color%}])"
-
-# create a line above the prompt to with info
-precmd() {
-    print -rP '${timestamp}${working_directory}$(git_prompt_info)${exit_code}$(aws_prompt_info)'
-}
+# The prompt (with an asynchronous git segment) lives in its own module so it
+# does not clutter this file. See zsh.d/prompt.zsh.
+local prompt_module="${HOME}/.zsh.d/prompt.zsh"
+[[ -e ${prompt_module} ]] && source ${prompt_module}
 
 # ALIASES/FUNCTIONS ############################################################ 
 
