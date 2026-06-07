@@ -23,11 +23,13 @@ default:
     @echo "  just veer      - set up veer global rules"
     @echo "  just casks     - install/upgrade homebrew casks"
     @echo "  just formulae  - install/upgrade homebrew formulae"
+    @echo "  just bun       - install/upgrade bun via homebrew"
+    @echo "  just playwright - install playwright-cli (via bun) and its skill"
     @echo "  just pb        - set up pb shared clipboard tool"
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks formulae pb veer
+all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb veer
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 _copy_dir source dest:
@@ -232,6 +234,39 @@ formulae:
             brew install "$formula"
         fi
     done
+
+# (a standalone ~/.bun/bin/bun shadows brew's on PATH, so drop it; ~/.bun stays the
+#  home for `bun add -g` packages and their bin symlinks like pi and playwright-cli)
+# install or upgrade bun via homebrew
+bun:
+    #!/usr/bin/env bash
+    set -e
+    if brew list bun &>/dev/null; then
+        output=$(brew upgrade bun 2>&1) || true
+        if echo "$output" | grep -q "already installed"; then
+            echo "✓ bun is up to date"
+        else
+            echo "↑ bun upgraded"
+            echo "$output"
+        fi
+    else
+        echo "→ Installing bun"
+        brew install bun
+    fi
+    standalone={{home_directory()}}/.bun/bin/bun
+    if [ -f "$standalone" ] && [ ! -L "$standalone" ]; then
+        rm -f "$standalone" {{home_directory()}}/.bun/bin/bunx
+        echo "✓ Removed standalone bun/bunx (brew now owns the bun runtime)"
+    fi
+
+# install or upgrade playwright-cli (bun global) and sync its bundled skill into ~/.claude/skills
+playwright: bun
+    #!/usr/bin/env bash
+    set -e
+    export BUN_INSTALL={{home_directory()}}/.bun
+    echo "→ Installing/upgrading @playwright/cli (bun global)"
+    bun add -g @playwright/cli@latest
+    just _copy_dir "$BUN_INSTALL/install/global/node_modules/@playwright/cli/skills/playwright-cli" {{home_directory()}}/.claude/skills/playwright-cli
 
 # add a spacer tile to the macOS dock (run once per spacer you want)
 dock-spacer:
