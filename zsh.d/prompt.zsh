@@ -32,7 +32,11 @@ _git_seg_compute() {
 # Unregister and close the in-flight worker's fd. Closing the pipe makes an
 # abandoned worker exit on its own (EOF / SIGPIPE), so there is nothing to kill.
 _git_seg_cleanup() {
-  (( _git_fd )) && { zle -F $_git_fd 2>/dev/null; exec {_git_fd}<&- 2>/dev/null; }
+  # NB: the close runs inside a { } block so the 2>/dev/null is scoped to the
+  # block. A bare `exec {_git_fd}<&- 2>/dev/null` would apply 2>/dev/null to the
+  # shell itself (exec with no command = permanent redirection), silently sending
+  # all of the interactive shell's stderr to /dev/null.
+  (( _git_fd )) && { zle -F $_git_fd 2>/dev/null; { exec {_git_fd}<&- } 2>/dev/null; }
   _git_fd=0
 }
 
