@@ -118,14 +118,36 @@ ssh-key:
 # set up claude configuration
 claude: claude-md claude-skills claude-settings claude-install-plugins
 
+[unix]
 claude-md:
     @mkdir -p {{home_directory()}}/.claude
     @just _symlink {{justfile_directory()}}/.claude/CLAUDE.md {{home_directory()}}/.claude/CLAUDE.md
 
+# windows has no reliable user symlink, so copy instead (re-run after editing the repo copy)
+[windows]
+claude-md:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home=$(cygpath -u '{{home_directory()}}')
+    src=$(cygpath -u '{{justfile_directory()}}')/.claude/CLAUDE.md
+    mkdir -p "$home/.claude"
+    cp "$src" "$home/.claude/CLAUDE.md"
+    echo "✓ Copied CLAUDE.md -> $home/.claude/CLAUDE.md"
+
+[unix]
 claude-skills:
     @just _copy_dir {{justfile_directory()}}/.claude/skills {{home_directory()}}/.claude/skills
 
+[windows]
+claude-skills:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home=$(cygpath -u '{{home_directory()}}')
+    src=$(cygpath -u '{{justfile_directory()}}')/.claude/skills
+    just _copy_dir "$src" "$home/.claude/skills"
+
 # patch claude settings.json with values from this repo
+[unix]
 claude-settings:
     #!/usr/bin/env bash
     settings={{home_directory()}}/.claude/settings.json
@@ -141,6 +163,33 @@ claude-settings:
     # substitute dotfiles dir placeholder then deep-merge into live settings
     resolved=$(sed "s|__DOTFILES_DIR__|{{justfile_directory()}}|g" "$patch")
     merged=$(jq -s '.[0] * .[1]' "$settings" <(echo "$resolved"))
+    echo "$merged" > "$settings"
+    echo "✓ Patched $settings"
+
+# windows variant: normalize paths, run .sh statusline/hook via bash (dotfiles path must have no spaces)
+[windows]
+claude-settings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home=$(cygpath -u '{{home_directory()}}')
+    dir_u=$(cygpath -u '{{justfile_directory()}}')
+    dir_m=$(cygpath -m '{{justfile_directory()}}')
+    settings="$home/.claude/settings.json"
+    patch="$dir_u/claude-settings-patch.json"
+    mkdir -p "$home/.claude"
+    if [ ! -f "$settings" ]; then
+        echo "{}" > "$settings"
+    else
+        cp "$settings" "$settings.bak"
+        echo "backed up $settings -> $settings.bak"
+    fi
+    # forward-slash dotfiles dir; statusline + hook are .sh, so invoke them via bash
+    resolved=$(sed \
+        -e "s|__DOTFILES_DIR__/claude-statusline.sh|bash $dir_m/claude-statusline.sh|g" \
+        -e "s|__DOTFILES_DIR__/claude-prompt-submit-hook.sh|bash $dir_m/claude-prompt-submit-hook.sh|g" \
+        "$patch")
+    # --argjson avoids process substitution, which is unreliable under Git Bash
+    merged=$(jq --argjson patch "$resolved" '. * $patch' "$settings")
     echo "$merged" > "$settings"
     echo "✓ Patched $settings"
 
