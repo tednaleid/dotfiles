@@ -38,6 +38,9 @@
       "Bash(jq *)"
     ]
   },
+  "env": {
+    "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "1"
+  },
   "alwaysThinkingEnabled": true,
   "cleanupPeriodDays": 99999,
   "hooks": {
