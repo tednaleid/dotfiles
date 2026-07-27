@@ -32,6 +32,8 @@ default:
 all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb veer
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
+# skips files whose dest dir is a symlink pointing outside dest, so a symlinked
+# skill (e.g. ~/.claude/skills/commit -> another repo) isn't silently overwritten
 _copy_dir source dest:
     #!/usr/bin/env bash
     set -e
@@ -39,11 +41,22 @@ _copy_dir source dest:
         echo "⚠ {{source}} does not exist, skipping"
         exit 0
     fi
+    mkdir -p "{{dest}}"
+    destroot=$(cd "{{dest}}" && pwd -P)
     cd "{{source}}"
     find . -type f | while read -r rel; do
         rel="${rel#./}"
         destfile="{{dest}}/$rel"
         mkdir -p "$(dirname "$destfile")"
+        destdir=$(cd "$(dirname "$destfile")" && pwd -P)
+        case "$destdir/" in
+            "$destroot"/) ;;
+            "$destroot"/*) ;;
+            *)
+                echo "⚠ Skipped $rel: dest resolves outside {{dest}} -> $destdir"
+                continue
+                ;;
+        esac
         rm -f "$destfile"
         cp "{{source}}/$rel" "$destfile"
         echo "✓ Copied $rel"
