@@ -1,0 +1,342 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# ///
+
+# ABOUTME: posts line-anchored review comments to a GitLab merge request via glab
+# ABOUTME: prepends the From Claude marker, validates diff anchors, blocks duplicates
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+# The token posts under Ted's account, so this label is the only thing that
+# separates Claude's voice from his. Every body carries it.
+MARKER = (
+    "> **From Claude:** written by Claude Code and posted from Ted's account. "
+    "Not in Ted's voice."
+)
+MARKER_PROBE = "**From Claude:**"
+
+
+def parse_diff_lines(diff_text):
+    """Expand a unified diff into one entry per body line.
+
+    Each entry carries the line numbers GitLab needs in a position object:
+    added lines have a new_line, removed lines an old_line, context both.
+    """
+    lines = []
+    old_line = new_line = 0
+    for raw in diff_text.splitlines():
+        header = HUNK_RE.match(raw)
+        if header:
+            old_line, new_line = int(header.group(1)), int(header.group(2))
+            continue
+        if raw.startswith("+"):
+            lines.append({"kind": "added", "old_line": None, "new_line": new_line})
+            new_line += 1
+        elif raw.startswith("-"):
+            lines.append({"kind": "removed", "old_line": old_line, "new_line": None})
+            old_line += 1
+        elif raw.startswith(" "):
+            lines.append(
+                {"kind": "context", "old_line": old_line, "new_line": new_line}
+            )
+            old_line += 1
+            new_line += 1
+    return lines
+
+
+def find_anchor(diff_lines, line, side="new"):
+    """Position fields for a line, or None when the line is not in the diff.
+
+    GitLab accepts a comment only on a line the diff touches, and the fields it
+    requires depend on the line's kind: added takes new_line, removed takes
+    old_line, and an unchanged context line takes both or it is rejected.
+    """
+    key = f"{side}_line"
+    for entry in diff_lines:
+        if entry[key] != line:
+            continue
+        if entry["kind"] == "context":
+            return {"old_line": entry["old_line"], "new_line": entry["new_line"]}
+        return {key: line}
+    return None
+
+
+def find_duplicates(discussions, path, line):
+    """Ids of Claude-authored discussions already anchored at path:line.
+
+    A failed-looking POST can still have landed, so this runs before any retry.
+    The marker doubles as the probe: it is on every body the script sends and
+    on nothing a human wrote.
+    """
+    hits = []
+    for discussion in discussions:
+        notes = discussion.get("notes") or []
+        if not notes:
+            continue
+        note = notes[0]
+        if note.get("system"):
+            continue
+        if MARKER_PROBE not in note.get("body", ""):
+            continue
+        position = note.get("position") or {}
+        if position.get("new_path") == path and position.get("new_line") == line:
+            hits.append(discussion["id"])
+    return hits
+
+
+SAME_PATH = object()
+
+
+def build_payload(body, shas, path, anchor, old_path=SAME_PATH):
+    """Build the discussion payload for one positioned comment.
+
+    old_path defaults to new_path, which is correct for a modified file. Pass
+    the previous path for a rename, or None for an added file.
+    """
+    position = {"position_type": "text", **shas, "new_path": path}
+    resolved = path if old_path is SAME_PATH else old_path
+    if resolved is not None:
+        position["old_path"] = resolved
+    position.update(anchor)
+    return {"body": ensure_marker(body), "position": position}
+
+
+def ensure_marker(body):
+    """Return the body with exactly one attribution marker at the top."""
+    if MARKER_PROBE in body:
+        return body.strip("\n")
+    return f"{MARKER}\n\n{body.strip()}"
+
+
+def nearest_addressable(diff_lines, line, count=3, side="new"):
+    """Addressable lines closest to a rejected target, nearest first."""
+    key = f"{side}_line"
+    candidates = {e[key] for e in diff_lines if e[key] is not None} - {line}
+    return sorted(candidates, key=lambda n: (abs(n - line), n))[:count]
+
+
+def repo_root():
+    """glab expands the :id placeholder from the git remote, so it needs the repo."""
+    out = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return out.stdout.strip()
+
+
+def glab_api(path, method="GET", input_file=None, paginate=False):
+    cmd = ["glab", "api", path]
+    if paginate:
+        cmd.append("--paginate")
+    if method != "GET":
+        cmd += ["-X", method, "-H", "Content-Type: application/json"]
+    if input_file:
+        cmd += ["--input", str(input_file)]
+    out = subprocess.run(
+        cmd, capture_output=True, text=True, cwd=repo_root(), check=False
+    )
+    if out.returncode != 0:
+        raise SystemExit(f"glab api {path} failed:\n{out.stderr.strip()}")
+    return json.loads(out.stdout)
+
+
+def resolve_mr(explicit):
+    if explicit:
+        return explicit
+    out = subprocess.run(
+        ["glab", "mr", "view", "--output", "json"],
+        capture_output=True,
+        text=True,
+        cwd=repo_root(),
+        check=False,
+    )
+    if out.returncode != 0:
+        raise SystemExit("no MR for this branch; pass --mr")
+    return json.loads(out.stdout)["iid"]
+
+
+def diff_refs(iid):
+    """Shas for the MR's latest version.
+
+    Read immediately before posting: a force-push invalidates them, and a stale
+    triplet either fails the POST or lands the comment on the wrong line.
+    """
+    versions = glab_api(f"projects/:id/merge_requests/{iid}/versions")
+    latest = versions[0]
+    return {
+        "base_sha": latest["base_commit_sha"],
+        "start_sha": latest["start_commit_sha"],
+        "head_sha": latest["head_commit_sha"],
+    }
+
+
+def diff_index(iid):
+    """Map each changed path to its parsed diff lines and its old path."""
+    index = {}
+    for entry in glab_api(f"projects/:id/merge_requests/{iid}/diffs", paginate=True):
+        old_path = None if entry.get("new_file") else entry.get("old_path")
+        index[entry["new_path"]] = {
+            "lines": parse_diff_lines(entry.get("diff", "")),
+            "old_path": old_path,
+        }
+    return index
+
+
+def read_body(source):
+    if source in (None, "-"):
+        return sys.stdin.read()
+    return Path(source).read_text()
+
+
+def load_items(args):
+    """Normalise the two input shapes into one list of comments to post."""
+    if args.manifest:
+        raw = json.loads(Path(args.manifest).read_text())
+        return [
+            {
+                "path": item["file"],
+                "line": item["line"],
+                "body": item.get("body") or Path(item["body_file"]).read_text(),
+            }
+            for item in raw
+        ]
+    if args.general:
+        return [{"path": None, "line": None, "body": read_body(args.body_file)}]
+    path, _, line = args.target.rpartition(":")
+    return [{"path": path, "line": int(line), "body": read_body(args.body_file)}]
+
+
+def check_items(items, index, discussions, allow_duplicate):
+    """Resolve every anchor before anything is posted. Returns (ready, problems)."""
+    ready, problems = [], []
+    for item in items:
+        if item["path"] is None:
+            ready.append({**item, "anchor": None, "old_path": None})
+            continue
+        entry = index.get(item["path"])
+        if entry is None:
+            problems.append(f"{item['path']}: not in this MR's diff")
+            continue
+        anchor = find_anchor(entry["lines"], item["line"])
+        if anchor is None:
+            near = nearest_addressable(entry["lines"], item["line"])
+            near_text = ", ".join(str(n) for n in near) or "none in this file"
+            problems.append(
+                f"{item['path']}:{item['line']} is not in the diff; "
+                f"addressable lines nearby: {near_text}"
+            )
+            continue
+        dupes = find_duplicates(discussions, item["path"], item["line"])
+        if dupes and not allow_duplicate:
+            problems.append(
+                f"{item['path']}:{item['line']} already has a From Claude comment "
+                f"({dupes[0]}); pass --allow-duplicate to post anyway"
+            )
+            continue
+        ready.append({**item, "anchor": anchor, "old_path": entry["old_path"]})
+    return ready, problems
+
+
+def post_one(iid, item, shas):
+    if item["anchor"] is None:
+        payload = {"body": ensure_marker(item["body"])}
+        endpoint = f"projects/:id/merge_requests/{iid}/notes"
+    else:
+        payload = build_payload(
+            item["body"], shas, item["path"], item["anchor"], old_path=item["old_path"]
+        )
+        endpoint = f"projects/:id/merge_requests/{iid}/discussions"
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(payload, handle)
+        payload_path = handle.name
+    return glab_api(endpoint, method="POST", input_file=payload_path)
+
+
+def describe(item):
+    if item["path"] is None:
+        return "general note"
+    return f"{item['path']}:{item['line']}"
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Post line-anchored review comments to a GitLab MR."
+    )
+    parser.add_argument("target", nargs="?", help="FILE:LINE anchor in the new file")
+    parser.add_argument("--mr", help="MR iid; inferred from the branch when omitted")
+    parser.add_argument("--body-file", help="markdown body, or - for stdin")
+    parser.add_argument("--manifest", help="JSON array of {file, line, body|body_file}")
+    parser.add_argument(
+        "--general", action="store_true", help="post an unpositioned MR note"
+    )
+    parser.add_argument("--dry-run", action="store_true", help="print payloads only")
+    parser.add_argument(
+        "--allow-duplicate",
+        action="store_true",
+        help="post even when a From Claude comment already sits on that line",
+    )
+    args = parser.parse_args()
+
+    if not (args.manifest or args.general or args.target):
+        parser.error("give a FILE:LINE target, --manifest, or --general")
+
+    iid = resolve_mr(args.mr)
+    items = load_items(args)
+    shas = diff_refs(iid)
+    index = diff_index(iid)
+    discussions = glab_api(
+        f"projects/:id/merge_requests/{iid}/discussions", paginate=True
+    )
+
+    ready, problems = check_items(items, index, discussions, args.allow_duplicate)
+    for problem in problems:
+        print(f"BLOCKED  {problem}", file=sys.stderr)
+    if problems:
+        raise SystemExit(
+            f"{len(problems)} of {len(items)} anchors unusable; nothing posted"
+        )
+
+    print(
+        f"Posting {len(ready)} comment(s) to MR !{iid}, each labeled From Claude:",
+        file=sys.stderr,
+    )
+    for item in ready:
+        print(f"  {describe(item)}", file=sys.stderr)
+
+    if args.dry_run:
+        for item in ready:
+            body = ensure_marker(item["body"])
+            print(f"\n--- {describe(item)} ---\n{body}")
+        return 0
+
+    failures = 0
+    for item in ready:
+        response = post_one(iid, item, shas)
+        note = (response.get("notes") or [response])[0]
+        position = note.get("position") or {}
+        landed = (
+            f"{position['new_path']}:{position['new_line']}"
+            if position
+            else "general note"
+        )
+        if response.get("id"):
+            print(f"OK       {landed}  id={response['id']}")
+        else:
+            failures += 1
+            print(f"FAILED   {describe(item)}  {response}", file=sys.stderr)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

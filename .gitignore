@@ -5,3 +5,5 @@ gitconfig.local
 .claude/settings.local.json
 .llm/*
 !.llm/.gitkeep
+__pycache__/
+.pytest_cache/

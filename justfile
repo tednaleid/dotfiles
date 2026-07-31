@@ -26,10 +26,12 @@ default:
     @echo "  just bun       - install/upgrade bun via homebrew"
     @echo "  just playwright - install playwright-cli (via bun) and its skill"
     @echo "  just pb        - set up pb shared clipboard tool"
+    @echo "  just glab-comment - set up the GitLab MR comment poster"
+    @echo "  just test      - run the python unit tests"
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb veer
+all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb glab-comment veer
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 # skips files whose dest dir is a symlink pointing outside dest, so a symlinked
@@ -333,3 +335,12 @@ pb:
     @mkdir -p {{home_directory()}}/code/pb
     @just _symlink {{justfile_directory()}}/pb {{home_directory()}}/.local/bin/pb
     @just _symlink {{justfile_directory()}}/pb-preview {{home_directory()}}/.local/bin/pb-preview
+
+# set up glab-comment, the GitLab MR review comment poster
+glab-comment:
+    @mkdir -p {{home_directory()}}/.local/bin
+    @just _symlink {{justfile_directory()}}/glab-comment {{home_directory()}}/.local/bin/glab-comment
+
+# run the python unit tests
+test:
+    @uv run --with pytest pytest tests/ -q

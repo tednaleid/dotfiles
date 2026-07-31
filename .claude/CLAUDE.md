@@ -30,6 +30,15 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 - NEVER change whitespace that does not affect execution or output. Otherwise, use a formatting tool.
 - if there is a `justfile` (and there is almost always a `justfile`) use it in preference to building, running tests, etc directly.
 
+## Comments
+
+- Code comments MUST be evergreen: state what is true now, not how the code got here or what is planned next.
+- NEVER put ticket IDs, dates, "currently", "for now", or "once X lands" in a comment, and NEVER narrate what was tried and rejected. History lives in git and MRs.
+- A comment that cites a ticket is a status report, and status reports rot. Drop the ID and the same sentence becomes a description of behavior that stays true until the behavior changes.
+- Temporal words are fine when they describe the domain rather than our roadmap. "Projects still in early evaluation" is a fact about the data. "Not yet wired in" is a fact about our backlog.
+- Test each comment: written fresh against today's code, would it come out the same?
+- Concision is NOT deletion. Keep anything a reader cannot derive and would break the code without, and when rewording re-check that the claim is still true. Dropping a hedge can turn a true sentence false.
+
 # Writing documentation
 
 - NEVER use emojis, emdashes, or hyperbole.
@@ -41,7 +50,9 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 
 ## Public interaction
 
-- NEVER make comments or communicate with others on my behalf. You can suggest things that I can say, but I will control all interactions done in my name.
+- NEVER post, comment, or communicate with others on my behalf on your own initiative. Default to drafting; I control all interactions done in my name.
+- EXCEPTION: when I explicitly ask you to post something, do it. The ask must be explicit for that specific post. Approval once is not standing approval.
+- When you do post at my request, the content MUST open with a clear marker that it is from you, not me (e.g. `> **From Claude:** ...`). It posts under my account, so the label is the only thing distinguishing your voice from mine.
 
 # Command Line
 - in shell pipelines, use `jq` for parsing emitted JSON

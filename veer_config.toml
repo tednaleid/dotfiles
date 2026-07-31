@@ -38,3 +38,17 @@ message = "Plans must not contain 'actually' -- it usually means you changed dir
 [rule.match]
 content_regex = "[Aa]ctually"
 
+# Attribution guard: MR comments post under my account, so the only thing
+# separating the agent's voice from mine is the "From Claude" marker. The
+# glab-comment script prepends it, validates the diff anchor, and checks for
+# duplicates; a hand-rolled POST does none of that. Reads are unaffected.
+[[rule]]
+id = "no-raw-glab-mr-comment-post"
+name = "Route MR comments through glab-comment"
+action = "reject"
+message = "Use 'glab-comment' to post MR comments. It prepends the From Claude marker, validates that the line is addressable in the diff, and checks for duplicates. Raw POSTs skip all three."
+[rule.match]
+command = "glab"
+arg_regex = "merge_requests/[0-9]+/(discussions|notes)"
+raw_regex = "(-X|--method)[ =]+POST"
+
