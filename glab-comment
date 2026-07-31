@@ -17,11 +17,9 @@ from pathlib import Path
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 # The token posts under Ted's account, so this label is the only thing that
-# separates Claude's voice from his. Every body carries it.
-MARKER = (
-    "> **From Claude:** written by Claude Code and posted from Ted's account. "
-    "Not in Ted's voice."
-)
+# separates Claude's voice from his. Every body carries it, and it stays bare:
+# anything past the label competes with the comment for the reader's attention.
+MARKER = "> **From Claude:**"
 MARKER_PROBE = "**From Claude:**"
 
 

@@ -98,6 +98,9 @@ class TestEnsureMarker:
     def test_marker_names_claude_as_the_author(self):
         assert "From Claude" in gc.MARKER
 
+    def test_marker_is_the_label_and_nothing_else(self):
+        assert gc.MARKER == "> **From Claude:**"
+
 
 SHAS = {"base_sha": "aaa", "start_sha": "bbb", "head_sha": "ccc"}
 

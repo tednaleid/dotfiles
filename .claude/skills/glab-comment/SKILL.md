@@ -68,8 +68,19 @@ Better:
 
 ## What it does for you
 
-Every body gets the `> **From Claude:**` marker prepended. The comment posts under Ted's
-account, so that label is the only thing separating your voice from his.
+Every body is posted with the marker on its own line, then a blank line, then your comment
+and nothing else:
+
+```markdown
+> **From Claude:**
+
+The list path gates its envelope; the detail path has no equivalent.
+```
+
+The comment posts under Ted's account, so that label is the only thing separating your
+voice from his. Keep it bare. Do not pad it with an explanation of who wrote the comment
+or whose account it came from; that is throat-clearing above a comment whose whole job is
+to get to the point.
 
 It also re-reads the MR's diff refs on every run, validates each anchor before posting any
 of them, and refuses a line that already carries a From Claude comment. A POST that looks
