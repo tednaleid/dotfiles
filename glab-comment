@@ -146,7 +146,31 @@ def glab_api(path, method="GET", input_file=None, paginate=False):
     )
     if out.returncode != 0:
         raise SystemExit(f"glab api {path} failed:\n{out.stderr.strip()}")
-    return json.loads(out.stdout)
+    return parse_json_stream(out.stdout)
+
+
+def parse_json_stream(text):
+    """Parse glab's output, which is one JSON value per page rather than one document.
+
+    `glab api --paginate` concatenates each page's array instead of merging them,
+    so anything past a single page is not valid JSON: json.loads stops at the end
+    of page one and raises "Extra data". Decode successive values and flatten the
+    lists back into the one collection the caller expects.
+    """
+    decoder = json.JSONDecoder()
+    values, index, end = [], 0, len(text)
+    while index < end:
+        while index < end and text[index].isspace():
+            index += 1
+        if index >= end:
+            break
+        value, index = decoder.raw_decode(text, index)
+        values.append(value)
+    if len(values) == 1:
+        return values[0]
+    if all(isinstance(value, list) for value in values):
+        return [item for value in values for item in value]
+    return values
 
 
 def resolve_mr(explicit):
