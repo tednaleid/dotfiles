@@ -16,9 +16,9 @@ from pathlib import Path
 
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
-# The token posts under Ted's account, so this label is the only thing that
-# separates Claude's voice from his. Every body carries it, and it stays bare:
-# anything past the label competes with the comment for the reader's attention.
+# The comment posts under the user's account, so this label is the only thing
+# that separates Claude's voice from theirs. Every body carries it, and it stays
+# bare: anything past the label competes with the comment for the reader's eye.
 MARKER = "> **From Claude:**"
 MARKER_PROBE = "**From Claude:**"
 
@@ -204,14 +204,43 @@ def diff_refs(iid):
 
 
 def diff_index(iid):
-    """Map each changed path to its parsed diff lines and its old path."""
+    """Map each changed path to its parsed diff lines and its old path.
+
+    Files GitLab collapsed (over its per-file diff-size limit) return an empty
+    diff on /diffs; their text is only available from /changes with
+    access_raw_diffs, so backfill just those, and fail loudly if an overflowed
+    /changes still leaves paths unaddressable.
+    """
     index = {}
+    collapsed = []
     for entry in glab_api(f"projects/:id/merge_requests/{iid}/diffs", paginate=True):
         old_path = None if entry.get("new_file") else entry.get("old_path")
+        diff = entry.get("diff", "")
+        if not diff and entry.get("collapsed"):
+            collapsed.append(entry["new_path"])
         index[entry["new_path"]] = {
-            "lines": parse_diff_lines(entry.get("diff", "")),
+            "lines": parse_diff_lines(diff),
             "old_path": old_path,
         }
+    if collapsed:
+        raw = glab_api(
+            f"projects/:id/merge_requests/{iid}/changes?access_raw_diffs=true"
+        )
+        backfilled = []
+        for entry in raw.get("changes", []):
+            path = entry["new_path"]
+            if path in collapsed and entry.get("diff"):
+                index[path]["lines"] = parse_diff_lines(entry["diff"])
+                backfilled.append(path)
+        if backfilled:
+            print(f"backfilled collapsed diffs from /changes: {', '.join(backfilled)}",
+                  file=sys.stderr)
+        missing = [p for p in collapsed if p not in backfilled]
+        if missing:
+            names = ", ".join(missing)
+            if raw.get("overflow"):
+                raise SystemExit(f"/changes overflowed; unaddressable files: {names}")
+            print(f"warning: no diff available for: {names}", file=sys.stderr)
     return index
 
 

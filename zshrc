@@ -245,7 +245,58 @@ aws-profile() {
   fi
 }
 
-# PRIVATE / HOST SPECIFIC ############################################ 
+# Create (or reuse) a worktree for a branch / MR / PR and cd into it.
+#   wtcd                      current branch
+#   wtcd JIRA-123-my-branch   branch name
+#   wtcd 254                  MR/PR number
+#   wtcd <mr-url>             MR/PR URL
+# Extra flags (-q, -v) are passed through to `wt create`.
+wtcd() {
+  # wt derives the repo from cwd, so run it from the main checkout even when
+  # called from inside another worktree.
+  local main_wt
+  main_wt=$(git worktree list --porcelain 2>/dev/null | head -1 | cut -d' ' -f2-)
+  if [[ -z "$main_wt" ]]; then
+    print -u2 "wtcd: not inside a git repository"
+    return 1
+  fi
+
+  local errfile wt_path rc
+  errfile=$(mktemp)
+  wt_path=$(cd "$main_wt" && wt create "$@" 2>"$errfile")
+  rc=$?
+  cat "$errfile" >&2
+  if (( rc != 0 )); then
+    wt_path=$(sed -n 's/^worktree already exists: //p' "$errfile")
+    if [[ -z "$wt_path" ]]; then
+      rm -f "$errfile"
+      return $rc
+    fi
+    print -u2 "wtcd: reusing existing worktree"
+  fi
+  rm -f "$errfile"
+
+  cd "$wt_path"
+}
+
+# Review a GitLab MR in its own worktree:  mrreview 254  |  mrreview <mr-url>
+mrreview() {
+  local target="${1:?usage: mrreview <mr-number|mr-url>}"
+  local num="${target##*/merge_requests/}"; num="${num%%/*}"
+  if [[ "$num" != <-> ]]; then
+    print -u2 "mrreview: no MR number in '$target'"
+    return 2
+  fi
+
+  wtcd "$num" || return
+
+  claude -n "review-branch-$num" \
+    --append-system-prompt "The git worktree for MR $num already exists and this session is running inside it. Skip the review-branch skill's worktree-creation step and review in the current directory." \
+    "/review-branch $num"
+}
+
+
+## PRIVATE / HOST SPECIFIC ############################################ 
 
 # Include private stuff that's not supposed to show up in the dotfiles repo
 local private="${HOME}/.zsh.d/private.sh"
