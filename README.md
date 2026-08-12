@@ -52,7 +52,7 @@ The `just claude` recipe sets up:
 * **CLAUDE.md** -- global instructions symlinked to `~/.claude/CLAUDE.md`
 * **skills** -- skill definitions copied to `~/.claude/skills/`
 * **settings** -- patches `~/.claude/settings.json` with values from `claude-settings-patch.json` (deep-merged via `jq`, preserving any existing keys)
-* **plugins** -- installs astral-sh marketplace plugins
+* **plugins** -- adds the marketplaces in `_claude_marketplaces` and installs the plugins in `_claude_plugins` (astral, superpowers, and the `tednaleid/claude-plugins` set), updating any that are already installed
 
 The `claude-settings` recipe merges keys from `claude-settings-patch.json` into the live settings file. This is a one-way patch (dotfiles -> live settings), so machine-specific keys in `settings.json` are preserved.
 

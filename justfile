@@ -7,6 +7,12 @@ _casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/ground
 # homebrew formulae to install/upgrade (use full tap path for custom taps)
 _formulae := "tednaleid/sumpig/sumpig tednaleid/veer/veer"
 
+# claude plugin marketplaces to add/update (github owner/repo)
+_claude_marketplaces := "astral-sh/claude-code-plugins anthropics/claude-plugins-official tednaleid/claude-plugins"
+
+# claude plugins to install/update (plugin@marketplace)
+_claude_plugins := "astral@astral-sh superpowers@claude-plugins-official context-relay@tednaleid just-bootstrap@tednaleid onboard-codebase@tednaleid review-branch@tednaleid worktree@tednaleid"
+
 # default recipe - show help
 default:
     @echo "To set up missing symlinks in your home directory, run: "
@@ -211,13 +217,28 @@ claude-settings:
 # install claude marketplace plugins and skills
 claude-install-plugins:
     #!/usr/bin/env bash
-    if claude plugin marketplace list 2>&1 | grep -q 'astral-sh/claude-code-plugins'; then
-        echo "✓ astral-sh marketplace already installed"
-    else
-        echo "→ Adding astral-sh marketplace"
-        claude plugin marketplace add astral-sh/claude-code-plugins
-    fi
-    claude plugin install astral@astral-sh
+    set -euo pipefail
+    marketplaces=$(claude plugin marketplace list 2>&1)
+    for repo in {{_claude_marketplaces}}; do
+        if grep -qF "$repo" <<<"$marketplaces"; then
+            echo "✓ $repo marketplace already added"
+        else
+            echo "→ Adding $repo marketplace"
+            claude plugin marketplace add "$repo"
+        fi
+    done
+    echo "→ Updating marketplaces"
+    claude plugin marketplace update
+    installed=$(claude plugin list 2>&1)
+    for plugin in {{_claude_plugins}}; do
+        if grep -qF "$plugin" <<<"$installed"; then
+            echo "→ Updating $plugin"
+            claude plugin update "$plugin"
+        else
+            echo "→ Installing $plugin"
+            claude plugin install "$plugin"
+        fi
+    done
 
 # set up ghostty terminal configuration
 ghostty: ghostty-config ghostty-shaders
