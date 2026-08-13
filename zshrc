@@ -289,6 +289,8 @@ mrreview() {
   fi
 
   wtcd "$num" || return
+  # green tabs for MR Reviews
+  montty tab color green
 
   claude -n "review-branch-$num" \
     --append-system-prompt "The git worktree for MR $num already exists and this session is running inside it. Skip the review-branch skill's worktree-creation step and review in the current directory." \
