@@ -8,10 +8,10 @@ _casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/ground
 _formulae := "tednaleid/sumpig/sumpig tednaleid/veer/veer"
 
 # claude plugin marketplaces to add/update (github owner/repo)
-_claude_marketplaces := "astral-sh/claude-code-plugins anthropics/claude-plugins-official tednaleid/claude-plugins"
+_claude_marketplaces := "astral-sh/claude-code-plugins anthropics/claude-plugins-official obra/superpowers-marketplace tednaleid/claude-plugins"
 
 # claude plugins to install/update (plugin@marketplace)
-_claude_plugins := "astral@astral-sh superpowers@claude-plugins-official context-relay@tednaleid just-bootstrap@tednaleid onboard-codebase@tednaleid review-branch@tednaleid worktree@tednaleid"
+_claude_plugins := "astral@astral-sh superpowers@superpowers-marketplace context-relay@tednaleid just-bootstrap@tednaleid onboard-codebase@tednaleid review-branch@tednaleid worktree@tednaleid"
 
 # default recipe - show help
 default:
@@ -229,9 +229,11 @@ claude-install-plugins:
     done
     echo "→ Updating marketplaces"
     claude plugin marketplace update
-    installed=$(claude plugin list 2>&1)
+    # scope-filtered: `plugin list` also reports project/local installs from other
+    # repos, and `plugin update` only operates on the user scope
+    installed=$(claude plugin list --json | jq -r '.[] | select(.scope == "user") | .id')
     for plugin in {{_claude_plugins}}; do
-        if grep -qF "$plugin" <<<"$installed"; then
+        if grep -qxF "$plugin" <<<"$installed"; then
             echo "→ Updating $plugin"
             claude plugin update "$plugin"
         else
