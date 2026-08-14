@@ -261,21 +261,10 @@ wtcd() {
     return 1
   fi
 
-  local errfile wt_path rc
-  errfile=$(mktemp)
-  wt_path=$(cd "$main_wt" && wt create "$@" 2>"$errfile")
-  rc=$?
-  cat "$errfile" >&2
-  if (( rc != 0 )); then
-    wt_path=$(sed -n 's/^worktree already exists: //p' "$errfile")
-    if [[ -z "$wt_path" ]]; then
-      rm -f "$errfile"
-      return $rc
-    fi
-    print -u2 "wtcd: reusing existing worktree"
-  fi
-  rm -f "$errfile"
-
+  # Only stdout (the worktree path) is captured; wt's progress output goes
+  # straight to the terminal so bootstrap streams live.
+  local wt_path
+  wt_path=$(cd "$main_wt" && wt create "$@") || return
   cd "$wt_path"
 }
 
