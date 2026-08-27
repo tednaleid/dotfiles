@@ -1,0 +1,487 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["iterfzf"]
+# ///
+
+# ABOUTME: browse and resume Claude Code sessions by recap, title, project and worktree
+# ABOUTME: use 'csess' to pick one with fzf, 'csess list' to print them, '-g' to search content
+
+import argparse
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import iterfzf
+
+
+WORKTREE_MARKER = "/.claude/worktrees/"
+RECAP_HINT = re.compile(r"\s*\(disable recaps in /config\)\s*$")
+DURATION = re.compile(r"^(\d+)([hdwmy])$")
+DURATION_UNITS = {"h": 3600, "d": 86400, "w": 604800, "m": 2592000, "y": 31536000}
+
+
+def one_line(text):
+    """Collapse a block of text into a single spaced line."""
+    return " ".join(text.split())
+
+
+def parse_duration(text):
+    """Turn a relative age like 12h, 14d, 2w, 3m or 1y into seconds."""
+    match = DURATION.match(text)
+    if not match:
+        raise ValueError(f"bad duration {text!r}: use forms like 12h, 14d, 2w, 3m, 1y")
+    return int(match.group(1)) * DURATION_UNITS[match.group(2)]
+
+
+def split_worktree(cwd):
+    """Split a session cwd into (project root, worktree name)."""
+    root, marker, rest = cwd.partition(WORKTREE_MARKER)
+    if not marker:
+        return cwd, None
+    return root, rest.split("/")[0]
+
+
+@dataclass
+class Session:
+    id: str
+    path: Path
+    cwd: str | None = None
+    branch: str | None = None
+    recap: str | None = None
+    custom_title: str | None = None
+    ai_title: str | None = None
+    last_prompt: str | None = None
+    message_count: int = 0
+    mtime: float = 0.0
+
+    @property
+    def title(self):
+        return self.custom_title or self.ai_title or self.id[:8]
+
+    @property
+    def summary(self):
+        return self.recap or self.last_prompt or ""
+
+    @property
+    def project_root(self):
+        return split_worktree(self.cwd)[0] if self.cwd else None
+
+    @property
+    def worktree(self):
+        return split_worktree(self.cwd)[1] if self.cwd else None
+
+    @property
+    def project_key(self):
+        """Group key that folds worktrees and relocated checkouts together."""
+        if not self.project_root:
+            return self.path.parent.name
+        return Path(self.project_root).name
+
+
+def iter_records(path):
+    """Yield the parseable JSON records of a transcript, skipping damaged lines."""
+    for line in path.read_text(errors="replace").splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            yield json.loads(line)
+        except ValueError:
+            continue
+
+
+def parse_session(path):
+    """Read a transcript and pull out the fields csess displays."""
+    session = Session(id=path.stem, path=path)
+    for record in iter_records(path):
+        if record.get("cwd"):
+            session.cwd = record["cwd"]
+        if record.get("gitBranch"):
+            session.branch = record["gitBranch"]
+        kind = record.get("type")
+        if record.get("subtype") == "away_summary":
+            session.recap = RECAP_HINT.sub("", record.get("content") or "")
+        elif kind == "custom-title":
+            session.custom_title = record.get("customTitle")
+        elif kind == "ai-title":
+            session.ai_title = record.get("aiTitle")
+        elif kind == "last-prompt":
+            session.last_prompt = record.get("lastPrompt")
+        elif kind in ("user", "assistant"):
+            session.message_count += 1
+    return session
+
+
+def projects_root():
+    """Where Claude Code keeps its transcripts, honouring CLAUDE_CONFIG_DIR."""
+    config = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(config) if config else Path.home() / ".claude") / "projects"
+
+
+def grep_sessions(sessions, pattern):
+    """Keep sessions whose raw transcript matches a case-insensitive regex."""
+    try:
+        matcher = re.compile(pattern, re.IGNORECASE)
+    except re.error as exc:
+        raise ValueError(f"bad pattern {pattern!r}: {exc}") from exc
+    return [s for s in sessions if matcher.search(s.path.read_text(errors="replace"))]
+
+
+def find_transcript(root, session_id):
+    """Locate one transcript by session id without parsing the whole index."""
+    if "/" in session_id or session_id in ("", ".", ".."):
+        return None
+    return next(Path(root).glob(f"*/{session_id}.jsonl"), None)
+
+
+CACHED_FIELDS = (
+    "cwd", "branch", "recap", "custom_title", "ai_title", "last_prompt", "message_count",
+)
+
+
+def cache_path():
+    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(base) / "csess" / "index.json"
+
+
+def _read_cache(cache_file):
+    if not cache_file:
+        return {}
+    try:
+        return json.loads(cache_file.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_cache(cache_file, entries):
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(entries))
+    except OSError:
+        pass
+
+
+def index_sessions(root, cache_file=None):
+    """Parse every top-level transcript under the projects root, newest first.
+
+    Parsing 750MB of transcripts takes seconds, so results are memoised against
+    each file's size and mtime when a cache file is supplied.
+    """
+    root = Path(root)
+    cached = _read_cache(cache_file)
+    entries = {}
+    sessions = []
+
+    for path in root.glob("*/*.jsonl"):
+        stat = path.stat()
+        key = str(path)
+        hit = cached.get(key)
+        if hit and hit.get("mtime") == stat.st_mtime and hit.get("size") == stat.st_size:
+            session = Session(id=path.stem, path=path, mtime=stat.st_mtime)
+            for field in CACHED_FIELDS:
+                setattr(session, field, hit[field])
+        else:
+            session = parse_session(path)
+            session.mtime = stat.st_mtime
+        entries[key] = {
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+            **{field: getattr(session, field) for field in CACHED_FIELDS},
+        }
+        sessions.append(session)
+
+    if cache_file and entries != cached:
+        _write_cache(cache_file, entries)
+    sessions.sort(key=lambda s: s.mtime, reverse=True)
+    return sessions
+
+
+def filter_sessions(sessions, project=None, since=None, now=None):
+    """Narrow an index to one project and/or to sessions touched recently."""
+    cutoff = (now if now is not None else time.time()) - since if since else None
+    return [
+        s
+        for s in sessions
+        if (project is None or s.project_key == project) and (cutoff is None or s.mtime >= cutoff)
+    ]
+
+
+def current_project_key(cwd):
+    """Project key for a directory, folding worktrees into their parent repo."""
+    try:
+        toplevel = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return Path(cwd).name
+    return Path(split_worktree(toplevel)[0]).name
+
+
+AGE_UNITS = (("y", 31536000), ("w", 604800), ("d", 86400), ("h", 3600), ("m", 60))
+
+
+def format_age(seconds):
+    """Render an age in the largest unit that fits, e.g. 2h, 3d, 2w."""
+    for suffix, size in AGE_UNITS:
+        if seconds >= size:
+            return f"{int(seconds // size)}{suffix}"
+    return "now"
+
+
+def format_row(session, now):
+    """Build one tab-delimited fzf row; the leading id is hidden from display."""
+    project = session.project_key
+    if session.worktree:
+        project = f"{project}/{session.worktree}"
+    return "\t".join(
+        [
+            session.id,
+            format_age(now - session.mtime),
+            project,
+            session.branch or "-",
+            one_line(session.title),
+            one_line(session.summary),
+        ]
+    )
+
+
+def display_origin(session, cwd):
+    """Describe where a session ran, relative to the current directory when useful."""
+    if not session.cwd:
+        return "unknown"
+    if session.cwd == cwd:
+        return f"{session.cwd}  (current directory)"
+    origin = Path(session.cwd)
+    if origin.is_relative_to(cwd):
+        return f"./{origin.relative_to(cwd)}  ({session.cwd})"
+    return session.cwd
+
+
+def render_preview(session, cwd, now=None):
+    """Render the detail pane for one session."""
+    now = time.time() if now is None else now
+    lines = [
+        session.title,
+        "",
+        f"project   {session.project_key}",
+        f"branch    {session.branch or '-'}",
+        f"age       {format_age(now - session.mtime)}",
+        f"messages  {session.message_count}",
+        f"origin    {display_origin(session, cwd)}",
+        f"id        {session.id}",
+    ]
+    if session.recap:
+        lines += ["", "RECAP", session.recap]
+    if session.last_prompt:
+        lines += ["", "LAST PROMPT", one_line(session.last_prompt)]
+    return "\n".join(lines)
+
+
+def message_text(record):
+    """Pull the human-readable text out of a user or assistant record."""
+    content = (record.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return "\n".join(part for part in parts if part).strip()
+    return ""
+
+
+def render_transcript(session):
+    """Render a session's user and assistant turns as readable text."""
+    turns = []
+    for record in iter_records(session.path):
+        if record.get("type") not in ("user", "assistant"):
+            continue
+        text = message_text(record)
+        if text:
+            turns.append(f"{record['type']}\n{text}")
+    return "\n\n".join(turns)
+
+
+RELOCATION_NOTE = (
+    "This session is being resumed from a different directory than it originated in. "
+    "It originally ran in {origin}; the current working directory is now {cwd}. "
+    "File paths from earlier in the conversation may not resolve here."
+)
+
+
+def resume_argv(session, cwd):
+    """Build the claude invocation that resumes a session in the given directory."""
+    argv = ["claude", "--resume", session.id]
+    if session.cwd and session.cwd != cwd:
+        argv += ["--append-system-prompt", RELOCATION_NOTE.format(origin=session.cwd, cwd=cwd)]
+    return argv
+
+
+def die(message):
+    sys.exit(f"csess: {message}")
+
+
+def require_claude():
+    if not shutil.which("claude"):
+        die(
+            "'claude' not found on PATH\n"
+            "  csess lists and resumes Claude Code sessions; install it from\n"
+            "  https://claude.com/claude-code"
+        )
+
+
+def collect(args):
+    """Index the transcripts and narrow them to the requested scope."""
+    root = projects_root()
+    sessions = index_sessions(root, cache_file=cache_path()) if root.is_dir() else []
+    if not sessions:
+        die(
+            f"no Claude Code sessions found at {root}\n"
+            "  start a session with `claude`, or set CLAUDE_CONFIG_DIR if your\n"
+            "  config lives elsewhere"
+        )
+
+    project = None if args.all else current_project_key(Path.cwd())
+    try:
+        since = parse_duration(args.since) if args.since else None
+        sessions = filter_sessions(sessions, project=project, since=since)
+        if args.grep:
+            sessions = grep_sessions(sessions, args.grep)
+    except ValueError as exc:
+        die(str(exc))
+
+    if not sessions:
+        scope = "any project" if args.all else f"project '{project}'"
+        hint = "" if args.all else "\n  use -a to search every project"
+        die(f"no sessions matched in {scope}{hint}")
+    return sessions
+
+
+def session_dict(session):
+    return {
+        "id": session.id,
+        "title": session.title,
+        "project": session.project_key,
+        "worktree": session.worktree,
+        "branch": session.branch,
+        "cwd": session.cwd,
+        "modified": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(session.mtime)),
+        "messages": session.message_count,
+        "recap": session.recap,
+        "last_prompt": session.last_prompt,
+        "transcript": str(session.path),
+    }
+
+
+def print_list(sessions, as_json):
+    if as_json:
+        print(json.dumps([session_dict(s) for s in sessions], indent=2))
+        return
+    now = time.time()
+    rows = [format_row(s, now).split("\t")[1:] for s in sessions]
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    room = shutil.get_terminal_size((120, 24)).columns - sum(widths) - 8
+    for age, project, branch, title, summary in rows:
+        line = f"{age:<{widths[0]}}  {project:<{widths[1]}}  {branch:<{widths[2]}}  {title:<{widths[3]}}"
+        if room > 20:
+            line = f"{line}  {summary[:room]}"
+        print(line.rstrip())
+
+
+def pick(sessions):
+    """Run the fzf picker and return the chosen session, or None."""
+    now = time.time()
+    by_id = {s.id: s for s in sessions}
+    me = shlex.quote(str(Path(__file__).resolve()))
+    try:
+        selection = iterfzf.iterfzf(
+            (format_row(s, now) for s in sessions),
+            prompt="session> ",
+            preview=f"{me} preview {{1}}",
+            __extra__=[
+                "--delimiter=\t",
+                "--with-nth=2..",
+                "--preview-window=right:55%:wrap",
+                "--header=enter: resume here   ctrl-t: transcript   ctrl-y: copy id",
+                "--bind=ctrl-y:execute-silent(printf %s {1} | pbcopy)",
+                f"--bind=ctrl-t:execute({me} transcript {{1}} | ${{PAGER:-less}} -R)",
+            ],
+        )
+    except KeyboardInterrupt:
+        return None
+    return by_id.get(selection.split("\t")[0]) if selection else None
+
+
+def build_parser():
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "-a", "--all", action="store_true", default=argparse.SUPPRESS,
+        help="every project, not just the one you are standing in",
+    )
+    common.add_argument(
+        "--since", metavar="AGE", default=argparse.SUPPRESS,
+        help="only sessions touched within e.g. 12h, 14d, 2w, 3m, 1y",
+    )
+    common.add_argument(
+        "-g", "--grep", metavar="REGEX", default=argparse.SUPPRESS,
+        help="only sessions whose transcript matches a regex",
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="csess",
+        parents=[common],
+        description="Browse and resume Claude Code sessions by recap, title and project.",
+    )
+    parser.set_defaults(all=False, since=None, grep=None, command=None)
+    sub = parser.add_subparsers(dest="command")
+
+    listing = sub.add_parser("list", parents=[common], help="print sessions instead of picking one")
+    listing.add_argument("--json", action="store_true", help="machine-readable output")
+
+    for name, blurb in (("preview", "render one session's detail pane"),
+                        ("transcript", "print one session's conversation")):
+        one = sub.add_parser(name, help=blurb)
+        one.add_argument("session_id")
+
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    require_claude()
+
+    if args.command in ("preview", "transcript"):
+        path = find_transcript(projects_root(), args.session_id)
+        if not path:
+            die(f"unknown session '{args.session_id}'")
+        session = parse_session(path)
+        session.mtime = path.stat().st_mtime
+        render = render_preview(session, str(Path.cwd())) if args.command == "preview" else render_transcript(session)
+        print(render)
+        return 0
+
+    sessions = collect(args)
+    if args.command == "list":
+        print_list(sessions, as_json=args.json)
+        return 0
+
+    session = pick(sessions)
+    if session is None:
+        return 130
+    os.execvp("claude", resume_argv(session, str(Path.cwd())))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

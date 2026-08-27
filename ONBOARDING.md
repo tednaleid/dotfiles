@@ -18,7 +18,9 @@ developer's machine setup.
 - Install tools: `just casks` | `just formulae` | `just bun` | `just playwright`
 - List recipes: `just --list`
 
-There is no test, lint, format, or typecheck recipe; this repo is config, not an app.
+- Run tests: `just test` (pytest over `tests/`, covering the pure logic in the standalone scripts)
+
+There is no lint, format, or typecheck recipe; this repo is config plus a few small tools.
 
 ## Architecture
 Two install primitives drive everything: `_symlink` (idempotent, skips if the
@@ -43,6 +45,8 @@ writes back into the repo.
 - `claude-statusline.sh`, `claude-prompt-submit-hook.sh` -- Claude Code statusline + UserPromptSubmit hook
 - `veer_config.toml` -- global veer rules (symlinked; `veer add/remove --global` writes through)
 - `pb` -- standalone clipboard tool (uv single-file script), installed to `~/.local/bin`
+- `csess` -- Claude Code session browser (uv single-file script), installed to `~/.local/bin`; indexes `~/.claude/projects` and resumes a session via fzf
+- `tests/` -- pytest suite for the standalone scripts, run by `just test`
 - `.llm/` -- gitignored scratch (benchmarks, throwaway test scripts)
 
 ## How to run
