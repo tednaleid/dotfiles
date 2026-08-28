@@ -457,6 +457,88 @@ class TestIndexCache:
         assert "gone" not in cache.read_text()
 
 
+class TestLiveSessions:
+    @staticmethod
+    def write_state(root, pid, session_id, status="idle", name=None):
+        directory = root / "sessions"
+        directory.mkdir(parents=True, exist_ok=True)
+        payload = {"pid": pid, "sessionId": session_id, "status": status, "cwd": "/c/p"}
+        if name:
+            payload["name"] = name
+        (directory / f"{pid}.json").write_text(json.dumps(payload))
+
+    def test_reports_sessions_whose_process_is_still_running(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        self.write_state(tmp_path, os.getpid(), "alive-id", status="busy", name="mine")
+
+        live = cs.live_sessions()
+
+        assert live["alive-id"]["pid"] == os.getpid()
+        assert live["alive-id"]["status"] == "busy"
+
+    def test_ignores_state_files_for_dead_processes(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        self.write_state(tmp_path, 999_999, "dead-id")
+
+        assert cs.live_sessions() == {}
+
+    def test_tolerates_a_corrupt_state_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        self.write_state(tmp_path, os.getpid(), "alive-id")
+        (tmp_path / "sessions" / "junk.json").write_text("not json")
+
+        assert set(cs.live_sessions()) == {"alive-id"}
+
+    def test_is_empty_when_no_sessions_directory_exists(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+
+        assert cs.live_sessions() == {}
+
+
+class TestForkNaming:
+    def test_uses_the_custom_name_as_the_base(self):
+        one = cs.Session(id="abc12345", path=Path("/t/a.jsonl"), custom_title="permissions-homework")
+
+        assert cs.fork_name(one, set(), "2026-08-27") == "permissions-homework-fork-2026-08-27"
+
+    def test_slugifies_an_ai_title(self):
+        one = cs.Session(
+            id="abc12345", path=Path("/t/a.jsonl"), ai_title="Stream stderr in wtcd shell function"
+        )
+
+        assert cs.fork_name(one, set(), "2026-08-27") == (
+            "stream-stderr-in-wtcd-shell-function-fork-2026-08-27"
+        )
+
+    def test_falls_back_to_the_short_id_when_untitled(self):
+        one = cs.Session(id="abc12345-1111", path=Path("/t/a.jsonl"))
+
+        assert cs.fork_name(one, set(), "2026-08-27") == "abc12345-fork-2026-08-27"
+
+    def test_suffixes_a_counter_when_the_name_is_taken(self):
+        one = cs.Session(id="abc12345", path=Path("/t/a.jsonl"), custom_title="hw")
+        taken = {"hw-fork-2026-08-27", "hw-fork-2026-08-27-2"}
+
+        assert cs.fork_name(one, taken, "2026-08-27") == "hw-fork-2026-08-27-3"
+
+    def test_fork_argv_names_the_branch_and_keeps_the_relocation_note(self):
+        one = cs.Session(id="abc123", path=Path("/t/a.jsonl"), cwd="/Users/x/code/proj")
+
+        argv = cs.fork_argv(one, "/Users/x/code/other", "hw-fork-2026-08-27")
+
+        assert argv[:3] == ["claude", "--resume", "abc123"]
+        assert "--fork-session" in argv
+        assert argv[argv.index("--name") + 1] == "hw-fork-2026-08-27"
+        assert "/Users/x/code/proj" in argv[argv.index("--append-system-prompt") + 1]
+
+    def test_fork_argv_omits_the_note_when_already_in_the_origin(self):
+        one = cs.Session(id="abc123", path=Path("/t/a.jsonl"), cwd="/Users/x/code/proj")
+
+        argv = cs.fork_argv(one, "/Users/x/code/proj", "hw-fork-2026-08-27")
+
+        assert "--append-system-prompt" not in argv
+
+
 class TestDisplay:
     @pytest.mark.parametrize(
         "seconds,expected",
@@ -486,19 +568,48 @@ class TestDisplay:
         fields = cs.format_row(one, now=1000).split("\t")
 
         assert fields[0] == "abc-123"
-        assert fields[1:] == ["now", "proj", "main", "Fix the thing", "Did the thing."]
+        assert fields[2:] == ["now", "proj", "main", "Fix the thing", "Did the thing."]
+
+    def test_row_marks_a_session_that_is_open_elsewhere(self):
+        one = session("live-id", "/c/p")
+        other = session("dead-id", "/c/p")
+        live = {"live-id": {"pid": 1, "status": "idle", "name": None}}
+
+        assert cs.format_row(one, now=0, live=live).split("\t")[1].strip() == cs.LIVE_MARK
+        assert cs.format_row(other, now=0, live=live).split("\t")[1].strip() == ""
 
     def test_row_names_the_worktree_alongside_its_project(self):
         one = session("s", "/Users/x/code/proj/.claude/worktrees/FORGE-1")
 
-        assert cs.format_row(one, now=0).split("\t")[2] == "proj/FORGE-1"
+        assert cs.format_row(one, now=0).split("\t")[3] == "proj/FORGE-1"
 
     def test_row_survives_tabs_and_newlines_in_a_recap(self):
         one = cs.Session(
             id="s", path=Path("/t/s.jsonl"), cwd="/c/p", recap="line one\n\tline two", mtime=0
         )
 
-        assert cs.format_row(one, now=0).split("\t")[5] == "line one line two"
+        assert cs.format_row(one, now=0).split("\t")[6] == "line one line two"
+
+    def test_preview_labels_the_name_instead_of_a_bare_heading(self):
+        one = cs.Session(id="s", path=Path("/t/s.jsonl"), cwd="/c/p", custom_title="hw", mtime=0)
+
+        first = cs.render_preview(one, cwd="/c/p", now=0).splitlines()[0]
+
+        assert first.split() == ["name", "hw"]
+
+    def test_preview_reports_a_session_open_elsewhere(self):
+        one = session("live-id", "/c/p")
+        live = {"live-id": {"pid": 77197, "status": "busy", "name": "hw"}}
+
+        text = cs.render_preview(one, cwd="/c/p", now=0, live=live)
+
+        assert "77197" in text
+        assert "busy" in text
+
+    def test_preview_omits_the_live_row_when_the_session_is_not_running(self):
+        text = cs.render_preview(session("s", "/c/p"), cwd="/c/p", now=0, live={})
+
+        assert "live" not in text
 
     def test_preview_shows_the_origin_directory_and_the_full_recap(self):
         one = cs.Session(
@@ -589,30 +700,41 @@ class TestTranscript:
 
 
 class TestPicker:
+    @staticmethod
+    def _fzf_returns(monkeypatch, value):
+        captured = {}
+
+        def fake(candidates, *_a, **kwargs):
+            captured["rows"] = list(candidates)
+            captured["kwargs"] = kwargs
+            if isinstance(value, BaseException):
+                raise value
+            return value(captured["rows"]) if callable(value) else value
+
+        monkeypatch.setattr(cs.iterfzf, "iterfzf", fake)
+        return captured
+
     def test_aborting_the_picker_is_not_an_error(self, monkeypatch):
-        def abort(*_args, **_kwargs):
-            raise KeyboardInterrupt
+        self._fzf_returns(monkeypatch, KeyboardInterrupt())
 
-        monkeypatch.setattr(cs.iterfzf, "iterfzf", abort)
-
-        assert cs.pick([session("s", "/c/p")]) is None
+        assert cs.pick([session("s", "/c/p")]) == (None, None)
 
     def test_selecting_nothing_is_not_an_error(self, monkeypatch):
-        monkeypatch.setattr(cs.iterfzf, "iterfzf", lambda *_a, **_k: None)
+        self._fzf_returns(monkeypatch, None)
 
-        assert cs.pick([session("s", "/c/p")]) is None
+        assert cs.pick([session("s", "/c/p")]) == (None, None)
 
-    def test_returns_the_session_matching_the_chosen_row(self, monkeypatch):
+    def test_enter_asks_to_resume_the_chosen_row(self, monkeypatch):
         wanted = session("wanted", "/c/p")
-        rows = []
+        self._fzf_returns(monkeypatch, lambda rows: ["", rows[1]])
 
-        def choose(candidates, *_a, **_k):
-            rows.extend(candidates)
-            return rows[1]
+        assert cs.pick([session("other", "/c/p"), wanted]) == ("resume", wanted)
 
-        monkeypatch.setattr(cs.iterfzf, "iterfzf", choose)
+    def test_ctrl_f_asks_to_fork_the_chosen_row(self, monkeypatch):
+        wanted = session("wanted", "/c/p")
+        self._fzf_returns(monkeypatch, lambda rows: ["ctrl-f", rows[0]])
 
-        assert cs.pick([session("other", "/c/p"), wanted]) is wanted
+        assert cs.pick([wanted]) == ("fork", wanted)
 
 
 class TestResume:

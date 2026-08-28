@@ -125,6 +125,60 @@ def projects_root():
     return (Path(config) if config else Path.home() / ".claude") / "projects"
 
 
+def sessions_root():
+    """Where Claude Code records the state of currently running sessions."""
+    config = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(config) if config else Path.home() / ".claude") / "sessions"
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OverflowError, TypeError, ValueError):
+        return False
+    return True
+
+
+def live_sessions():
+    """Map session id to running-process details for sessions open elsewhere."""
+    live = {}
+    for path in sorted(sessions_root().glob("*.json")):
+        try:
+            state = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        pid, session_id = state.get("pid"), state.get("sessionId")
+        if not pid or not session_id or not pid_alive(pid):
+            continue
+        live[session_id] = {
+            "pid": pid,
+            "status": state.get("status") or "unknown",
+            "name": state.get("name"),
+        }
+    return live
+
+
+def slugify(text, limit=40):
+    """Reduce a title to a lowercase, hyphen-separated fragment usable as a name."""
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:limit].rstrip("-")
+
+
+def fork_name(session, existing, today):
+    """Pick an unused name for a fork of this session."""
+    base = session.custom_title or slugify(session.ai_title or "") or session.id[:8]
+    candidate = f"{base}-fork-{today}"
+    suffix = 1
+    while candidate in existing:
+        suffix += 1
+        candidate = f"{base}-fork-{today}-{suffix}"
+    return candidate
+
+
 def grep_sessions(sessions, pattern):
     """Keep sessions whose raw transcript matches a case-insensitive regex."""
     try:
@@ -238,7 +292,10 @@ def format_age(seconds):
     return "now"
 
 
-def format_row(session, now):
+LIVE_MARK = "●"
+
+
+def format_row(session, now, live=None):
     """Build one tab-delimited fzf row; the leading id is hidden from display."""
     project = session.project_key
     if session.worktree:
@@ -246,6 +303,7 @@ def format_row(session, now):
     return "\t".join(
         [
             session.id,
+            LIVE_MARK if (live or {}).get(session.id) else " ",
             format_age(now - session.mtime),
             project,
             session.branch or "-",
@@ -267,16 +325,20 @@ def display_origin(session, cwd):
     return session.cwd
 
 
-def render_preview(session, cwd, now=None):
+def render_preview(session, cwd, now=None, live=None):
     """Render the detail pane for one session."""
     now = time.time() if now is None else now
     lines = [
-        session.title,
-        "",
+        f"name      {session.title}",
         f"project   {session.project_key}",
         f"branch    {session.branch or '-'}",
         f"age       {format_age(now - session.mtime)}",
         f"messages  {session.message_count}",
+    ]
+    running = (live or {}).get(session.id)
+    if running:
+        lines.append(f"live      pid {running['pid']} ({running['status']})")
+    lines += [
         f"origin    {display_origin(session, cwd)}",
         f"id        {session.id}",
     ]
@@ -329,6 +391,12 @@ def resume_argv(session, cwd):
     return argv
 
 
+def fork_argv(session, cwd, name):
+    """Build the claude invocation that branches a session into a new one."""
+    argv = resume_argv(session, cwd)
+    return argv[:3] + ["--fork-session", "--name", name] + argv[3:]
+
+
 def die(message):
     sys.exit(f"csess: {message}")
 
@@ -342,10 +410,16 @@ def require_claude():
         )
 
 
+def collect_all():
+    """Every indexed session, unfiltered."""
+    root = projects_root()
+    return index_sessions(root, cache_file=cache_path()) if root.is_dir() else []
+
+
 def collect(args):
     """Index the transcripts and narrow them to the requested scope."""
     root = projects_root()
-    sessions = index_sessions(root, cache_file=cache_path()) if root.is_dir() else []
+    sessions = collect_all()
     if not sessions:
         die(
             f"no Claude Code sessions found at {root}\n"
@@ -369,8 +443,10 @@ def collect(args):
     return sessions
 
 
-def session_dict(session):
+def session_dict(session, live=None):
+    running = (live or {}).get(session.id)
     return {
+        "live_pid": running["pid"] if running else None,
         "id": session.id,
         "title": session.title,
         "project": session.project_key,
@@ -385,43 +461,83 @@ def session_dict(session):
     }
 
 
-def print_list(sessions, as_json):
+def print_list(sessions, as_json, live=None):
     if as_json:
-        print(json.dumps([session_dict(s) for s in sessions], indent=2))
+        print(json.dumps([session_dict(s, live) for s in sessions], indent=2))
         return
     now = time.time()
-    rows = [format_row(s, now).split("\t")[1:] for s in sessions]
-    widths = [max(len(row[i]) for row in rows) for i in range(4)]
-    room = shutil.get_terminal_size((120, 24)).columns - sum(widths) - 8
-    for age, project, branch, title, summary in rows:
-        line = f"{age:<{widths[0]}}  {project:<{widths[1]}}  {branch:<{widths[2]}}  {title:<{widths[3]}}"
+    rows = [format_row(s, now, live).split("\t")[1:] for s in sessions]
+    widths = [max(len(row[i]) for row in rows) for i in range(5)]
+    room = shutil.get_terminal_size((120, 24)).columns - sum(widths) - 10
+    for mark, age, project, branch, title, summary in rows:
+        line = (
+            f"{mark:<{widths[0]}} {age:<{widths[1]}}  {project:<{widths[2]}}  "
+            f"{branch:<{widths[3]}}  {title:<{widths[4]}}"
+        )
         if room > 20:
             line = f"{line}  {summary[:room]}"
         print(line.rstrip())
 
 
-def pick(sessions):
-    """Run the fzf picker and return the chosen session, or None."""
+def pick(sessions, live=None):
+    """Run the fzf picker and return (action, session); (None, None) if aborted.
+
+    multi is enabled only so iterfzf hands back every output line, which is how
+    --expect reports the pressed key; --no-multi then restores single selection.
+    """
     now = time.time()
     by_id = {s.id: s for s in sessions}
     me = shlex.quote(str(Path(__file__).resolve()))
     try:
-        selection = iterfzf.iterfzf(
-            (format_row(s, now) for s in sessions),
+        output = iterfzf.iterfzf(
+            (format_row(s, now, live) for s in sessions),
             prompt="session> ",
             preview=f"{me} preview {{1}}",
+            multi=True,
             __extra__=[
+                "--no-multi",
+                "--expect=ctrl-f",
                 "--delimiter=\t",
                 "--with-nth=2..",
                 "--preview-window=right:55%:wrap",
-                "--header=enter: resume here   ctrl-t: transcript   ctrl-y: copy id",
+                "--header=enter: resume here   ctrl-f: fork   ctrl-t: transcript   ctrl-y: copy id",
                 "--bind=ctrl-y:execute-silent(printf %s {1} | pbcopy)",
                 f"--bind=ctrl-t:execute({me} transcript {{1}} | ${{PAGER:-less}} -R)",
             ],
         )
     except KeyboardInterrupt:
-        return None
-    return by_id.get(selection.split("\t")[0]) if selection else None
+        return None, None
+    if not output or len(output) < 2 or not output[1]:
+        return None, None
+    action = "fork" if output[0].strip() == "ctrl-f" else "resume"
+    return action, by_id.get(output[1].split("\t")[0])
+
+
+def known_names(sessions):
+    """Every name a session can already be resumed by, so forks stay unambiguous."""
+    names = set()
+    for one in sessions:
+        names.update(n for n in (one.custom_title, one.ai_title) if n)
+    return names
+
+
+def launch_resume(session, cwd, force, live):
+    running = live.get(session.id)
+    if running and not force:
+        die(
+            f"'{session.title}' is open in another terminal "
+            f"(pid {running['pid']}, {running['status']})\n"
+            "  resuming here branches the conversation, and whichever window\n"
+            "  writes last decides where the next resume picks up\n\n"
+            f"  fork it:  csess fork {session.id}\n"
+            f"  anyway:   csess resume {session.id} --force"
+        )
+    os.execvp("claude", resume_argv(session, cwd))
+
+
+def launch_fork(session, cwd, sessions):
+    name = fork_name(session, known_names(sessions), time.strftime("%Y-%m-%d"))
+    os.execvp("claude", fork_argv(session, cwd, name))
 
 
 def build_parser():
@@ -451,36 +567,58 @@ def build_parser():
     listing.add_argument("--json", action="store_true", help="machine-readable output")
 
     for name, blurb in (("preview", "render one session's detail pane"),
-                        ("transcript", "print one session's conversation")):
+                        ("transcript", "print one session's conversation"),
+                        ("fork", "branch a session into a new, named one"),
+                        ("resume", "resume a session by id")):
         one = sub.add_parser(name, help=blurb)
         one.add_argument("session_id")
+        if name == "resume":
+            one.add_argument(
+                "--force", action="store_true", help="resume even if it is open elsewhere"
+            )
 
     return parser
+
+
+def load_one(session_id):
+    path = find_transcript(projects_root(), session_id)
+    if not path:
+        die(f"unknown session '{session_id}'")
+    session = parse_session(path)
+    session.mtime = path.stat().st_mtime
+    return session
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
     require_claude()
+    cwd = str(Path.cwd())
 
     if args.command in ("preview", "transcript"):
-        path = find_transcript(projects_root(), args.session_id)
-        if not path:
-            die(f"unknown session '{args.session_id}'")
-        session = parse_session(path)
-        session.mtime = path.stat().st_mtime
-        render = render_preview(session, str(Path.cwd())) if args.command == "preview" else render_transcript(session)
-        print(render)
+        session = load_one(args.session_id)
+        if args.command == "transcript":
+            print(render_transcript(session))
+        else:
+            print(render_preview(session, cwd, live=live_sessions()))
         return 0
+
+    if args.command == "fork":
+        launch_fork(load_one(args.session_id), cwd, collect_all())
+    if args.command == "resume":
+        launch_resume(load_one(args.session_id), cwd, args.force, live_sessions())
 
     sessions = collect(args)
+    live = live_sessions()
     if args.command == "list":
-        print_list(sessions, as_json=args.json)
+        print_list(sessions, as_json=args.json, live=live)
         return 0
 
-    session = pick(sessions)
+    action, session = pick(sessions, live)
     if session is None:
         return 130
-    os.execvp("claude", resume_argv(session, str(Path.cwd())))
+    if action == "fork":
+        launch_fork(session, cwd, sessions)
+    launch_resume(session, cwd, False, live)
 
 
 if __name__ == "__main__":
