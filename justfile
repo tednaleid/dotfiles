@@ -33,12 +33,13 @@ default:
     @echo "  just playwright - install playwright-cli (via bun) and its skill"
     @echo "  just pb        - set up pb shared clipboard tool"
     @echo "  just csess     - set up the Claude Code session browser"
+    @echo "  just standup-digest - set up the daily standup gatherer"
     @echo "  just glab-comment - set up the GitLab MR comment poster"
     @echo "  just test      - run the python unit tests"
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb csess glab-comment veer
+all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb csess standup-digest glab-comment veer
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 # skips files whose dest dir is a symlink pointing outside dest, so a symlinked
@@ -364,6 +365,11 @@ pb:
 csess:
     @mkdir -p {{home_directory()}}/.local/bin
     @just _symlink {{justfile_directory()}}/csess {{home_directory()}}/.local/bin/csess
+
+# set up standup-digest, the daily standup gatherer
+standup-digest:
+    @mkdir -p {{home_directory()}}/.local/bin
+    @just _symlink {{justfile_directory()}}/standup-digest {{home_directory()}}/.local/bin/standup-digest
 
 # set up glab-comment, the GitLab MR review comment poster
 glab-comment:

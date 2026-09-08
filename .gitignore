@@ -7,3 +7,5 @@ gitconfig.local
 !.llm/.gitkeep
 __pycache__/
 .pytest_cache/
+.playwright-cli/
+.superpowers/

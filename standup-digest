@@ -1,0 +1,596 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# ///
+
+# ABOUTME: gather one working day of Claude sessions, commits and MR activity
+# ABOUTME: prints a markdown digest for the morning-summary skill to summarise
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+
+
+DURATION = re.compile(r"^(\d+)([hdw])$")
+DURATION_UNITS = {"h": 3600, "d": 86400, "w": 604800}
+
+SKILL_PREAMBLE = "Base directory for this skill:"
+SUMMARY_COMMAND = "/morning-summary"
+SUMMARY_SKILL = "skills/morning-summary"
+IMAGE_MARKER = re.compile(r"\[Image:[^\]]*\]")
+PROMPT_LIMIT = 200
+CONCLUSION_LIMIT = 400
+AUTOMATION_REPEATS = 3
+
+REMOTE_HOST = re.compile(r"^(?:[\w.+-]+@|\w+://(?:[^@/]+@)?)([^:/]+)")
+MR_ACTIONS = {"opened", "accepted", "approved", "commented on", "closed"}
+
+
+@dataclass
+class Window:
+    start: datetime
+    end: datetime
+    label: str
+
+
+def previous_working_day(day):
+    """The most recent weekday strictly before the given day."""
+    step = day - timedelta(days=1)
+    while step.weekday() >= 5:
+        step -= timedelta(days=1)
+    return step
+
+
+def start_of(day):
+    """Local midnight on the given date, as an aware datetime."""
+    return datetime.combine(day, datetime.min.time()).astimezone()
+
+
+def describe(start, end):
+    return f"{start:%a %Y-%m-%d %H:%M} through {end:%a %Y-%m-%d %H:%M}"
+
+
+def default_window(now):
+    """Local midnight on the previous working day, through now."""
+    start = start_of(previous_working_day(now.date()))
+    return Window(start=start, end=now, label=describe(start, now))
+
+
+def parse_boundary(text, now):
+    """Turn 12h, 2026-09-04 or 2026-09-04T13:30 into an aware local datetime."""
+    match = DURATION.match(text)
+    if match:
+        seconds = int(match.group(1)) * DURATION_UNITS[match.group(2)]
+        return now - timedelta(seconds=seconds)
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"bad boundary {text!r}: use 12h, 14d, 2w, YYYY-MM-DD or YYYY-MM-DDTHH:MM"
+        ) from exc
+    return parsed.astimezone()
+
+
+def compute_window(now, since, until):
+    """The default window, with either boundary replaced by an override."""
+    window = default_window(now)
+    start = parse_boundary(since, now) if since else window.start
+    end = parse_boundary(until, now) if until else window.end
+    return Window(start=start, end=end, label=describe(start, end))
+
+
+def widen(window):
+    """Step the start back one further working day."""
+    start = start_of(previous_working_day(window.start.date()))
+    return Window(
+        start=start, end=window.end, label=f"{describe(start, window.end)} (widened)"
+    )
+
+
+@dataclass
+class Turn:
+    kind: str
+    when: datetime
+    text: str
+    repeats: int = 1
+
+
+@dataclass
+class DigestSession:
+    id: str
+    title: str
+    project: str
+    worktree: str | None
+    branch: str | None
+    cwd: str | None
+    recap: str | None
+    transcript: Path
+    turns: list[Turn]
+
+
+@dataclass
+class Commit:
+    repo: str
+    when: datetime
+    sha: str
+    subject: str
+
+
+def iter_records(path):
+    """Yield the parseable JSON records of a transcript, skipping damaged lines."""
+    for line in path.read_text(errors="replace").splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            yield json.loads(line)
+        except ValueError:
+            continue
+
+
+def message_text(record):
+    """Pull the human-readable text out of a user or assistant record."""
+    content = (record.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return "\n".join(part for part in parts if part).strip()
+    return ""
+
+
+def read_turns(path):
+    """Every conversation turn in a transcript, timestamped in local time."""
+    turns = []
+    for record in iter_records(path):
+        if record.get("type") not in ("user", "assistant"):
+            continue
+        stamp = record.get("timestamp")
+        text = message_text(record)
+        if not stamp or not text:
+            continue
+        turns.append(
+            Turn(
+                kind=record["type"],
+                when=datetime.fromisoformat(stamp).astimezone(),
+                text=text,
+            )
+        )
+    return turns
+
+
+def select_sessions(index, window, pin_end=False):
+    """Index entries with conversation inside the window, carrying those turns.
+
+    The recap describes the session's latest state, not its state as of the
+    window's end, so a session that kept going past that boundary may have a
+    recap describing work the window is not supposed to know about yet. That
+    only means something when the boundary is one the caller actually pinned
+    with an explicit --until: a default window ends at "now", and a session
+    still running elsewhere can log a turn after that instant in the seconds
+    gather() itself takes to run, which is concurrency, not foreknowledge.
+    """
+    selected = []
+    for entry in index:
+        path = Path(entry["transcript"])
+        if not path.is_file():
+            continue
+        all_turns = read_turns(path)
+        turns = [t for t in all_turns if window.start <= t.when <= window.end]
+        if not turns:
+            continue
+        recap = entry.get("recap")
+        if pin_end and any(t.when > window.end for t in all_turns):
+            recap = None
+        selected.append(
+            DigestSession(
+                id=entry["id"],
+                title=entry.get("title") or entry["id"][:8],
+                project=entry.get("project") or "unknown",
+                worktree=entry.get("worktree"),
+                branch=entry.get("branch"),
+                cwd=entry.get("cwd"),
+                recap=recap,
+                transcript=path,
+                turns=turns,
+            )
+        )
+    return selected
+
+
+def clean(text, limit):
+    """Collapse to one line, replace attachment markers, and truncate."""
+    collapsed = " ".join(IMAGE_MARKER.sub("[image]", text).split())
+    return collapsed[:limit]
+
+
+def is_prompt(text):
+    """True for something Ted typed, as opposed to injected machinery."""
+    stripped = text.strip()
+    if not stripped or stripped.startswith("<"):
+        return False
+    return not stripped.startswith(SKILL_PREAMBLE)
+
+
+def is_summary_invocation(text):
+    """True when this turn is a run of the morning-summary skill itself."""
+    stripped = text.strip()
+    return stripped.startswith(SUMMARY_COMMAND) or (
+        stripped.startswith(SKILL_PREAMBLE) and SUMMARY_SKILL in stripped
+    )
+
+
+def user_prompts(turns):
+    """The turns that are prompts a person typed."""
+    return [t for t in turns if t.kind == "user" and is_prompt(t.text)]
+
+
+def drop_summary_sessions(sessions):
+    """Remove summary invocations, and any session that was nothing else."""
+    kept = []
+    for session in sessions:
+        turns = [t for t in session.turns if not is_summary_invocation(t.text)]
+        if not user_prompts(turns):
+            continue
+        session.turns = turns
+        kept.append(session)
+    return kept
+
+
+def prompts(session):
+    """The user turns worth showing, with runs of an identical prompt folded."""
+    kept, counts = [], []
+    for turn in user_prompts(session.turns):
+        if kept and kept[-1].text == turn.text:
+            counts[-1] += 1
+            continue
+        kept.append(turn)
+        counts.append(1)
+    return [
+        turn if count == 1 else Turn(kind=turn.kind, when=turn.when, text=turn.text, repeats=count)
+        for turn, count in zip(kept, counts)
+    ]
+
+
+def conclusions(session, per_day=5, min_chars=200):
+    """The last few substantial assistant messages of each day."""
+    by_day = defaultdict(list)
+    for t in session.turns:
+        if t.kind == "assistant" and len(t.text) >= min_chars:
+            by_day[t.when.date()].append(t)
+    kept = []
+    for day in sorted(by_day):
+        kept.extend(by_day[day][-per_day:])
+    return kept
+
+
+def is_automated_turns(turns):
+    """True when the only prompt among these turns is one text repeated."""
+    texts = [t.text for t in user_prompts(turns)]
+    return len(texts) >= AUTOMATION_REPEATS and len(set(texts)) == 1
+
+
+def _run(args):
+    """Run a command, returning stdout, or None if it fails."""
+    try:
+        done = subprocess.run(args, capture_output=True, text=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError, NotADirectoryError):
+        return None
+    return done.stdout.strip()
+
+
+def run_git(repo, *args):
+    """Run git in a repository, returning stdout, or None if it fails."""
+    return _run(["git", "-C", str(repo), *args])
+
+
+def git_root(path):
+    """The main working tree containing path, with worktrees folded into it."""
+    if not Path(path).is_dir():
+        return None
+    common = run_git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if not common:
+        return None
+    return Path(common).parent
+
+
+def discover_repos(sessions):
+    """Every distinct repository the window's sessions were run in."""
+    roots = {git_root(s.cwd) for s in sessions if s.cwd}
+    return sorted(r for r in roots if r)
+
+
+def commits_in(repo, window):
+    """Commits in the window authored by this repository's configured identity."""
+    email = run_git(repo, "config", "user.email")
+    if not email:
+        return []
+    # Merges performed through an MR are reported as merge request activity,
+    # so including them here would report the same action twice.
+    out = run_git(
+        repo,
+        "log",
+        "--all",
+        "--no-merges",
+        f"--author={email}",
+        f"--since={window.start.isoformat()}",
+        f"--until={window.end.isoformat()}",
+        "--format=%H%x1f%cI%x1f%s",
+    )
+    if not out:
+        return []
+    commits = []
+    for line in out.splitlines():
+        sha, when, subject = line.split("\x1f", 2)
+        commits.append(
+            Commit(
+                repo=repo.name,
+                when=datetime.fromisoformat(when).astimezone(),
+                sha=sha[:8],
+                subject=subject,
+            )
+        )
+    return commits
+
+
+def run_tool(*args):
+    """Run an external CLI, returning stdout, or None if it fails."""
+    return _run(list(args))
+
+
+def remote_host(repo):
+    """The hostname of the repository's origin remote."""
+    url = run_git(repo, "remote", "get-url", "origin")
+    if not url:
+        return None
+    match = REMOTE_HOST.match(url)
+    return match.group(1) if match else None
+
+
+def resolve_mr_iid(event):
+    """The merge request iid an event belongs to, following a comment to its parent."""
+    target_type = event.get("target_type")
+    if target_type == "MergeRequest":
+        return event.get("target_iid")
+    if target_type in ("Note", "DiffNote"):
+        note = event.get("note") or {}
+        if note.get("noteable_type") == "MergeRequest":
+            return note.get("noteable_iid")
+    return None
+
+
+def parse_json(raw):
+    """Parse a CLI's JSON response, or None if it is not valid JSON.
+
+    A paginated `glab api` response is one JSON array document per page,
+    concatenated back to back rather than merged into a single array, so a
+    multi-page response is decoded page by page and flattened.
+    """
+    try:
+        return json.loads(raw)
+    except ValueError:
+        pass
+    decoder = json.JSONDecoder()
+    text = raw.strip()
+    pages, pos = [], 0
+    try:
+        while pos < len(text):
+            page, end = decoder.raw_decode(text, pos)
+            pages.append(page)
+            pos = end
+            while pos < len(text) and text[pos].isspace():
+                pos += 1
+    except ValueError:
+        return None
+    if pages and all(isinstance(page, list) for page in pages):
+        return [item for page in pages for item in page]
+    return None
+
+
+def format_events(host, events, window):
+    """Render a GitLab event feed's merge request activity inside the window, one line each."""
+    lines = []
+    for event in events:
+        action = event.get("action_name", "")
+        if not any(action.startswith(known) for known in MR_ACTIONS):
+            continue
+        iid = resolve_mr_iid(event)
+        if iid is None:
+            continue
+        when = datetime.fromisoformat(event["created_at"]).astimezone()
+        if not window.start <= when <= window.end:
+            continue
+        title = clean(event.get("target_title") or "", 120)
+        lines.append(f"{when:%Y-%m-%d} {host} !{iid} {action}: {title}")
+    return lines
+
+
+def format_github_prs(pulls, window):
+    """Render GitHub pull requests touched inside the window, one line each."""
+    lines = []
+    for pr in pulls:
+        when = datetime.fromisoformat(pr["updatedAt"]).astimezone()
+        if not window.start <= when <= window.end:
+            continue
+        repo = pr.get("repository", {}).get("nameWithOwner", "")
+        title = clean(pr.get("title") or "", 120)
+        lines.append(f"{when:%Y-%m-%d} {repo} #{pr['number']} {pr['state']}: {title}")
+    return lines
+
+
+def mr_activity(repos, window):
+    """Merge request events in the window, plus a list of what could not be read."""
+    lines, problems = [], []
+    hosts = {remote_host(r) for r in repos}
+    for host in sorted(h for h in hosts if h):
+        if host == "github.com":
+            raw = run_tool(
+                "gh",
+                "search",
+                "prs",
+                "--involves=@me",
+                f"--updated={window.start:%Y-%m-%d}..{window.end:%Y-%m-%d}",
+                "--json",
+                "number,title,state,updatedAt,repository",
+                "--limit",
+                "50",
+            )
+            if raw is None:
+                problems.append(f"{host}: could not be read")
+                continue
+            pulls = parse_json(raw)
+            if pulls is None:
+                problems.append(f"{host}: response could not be parsed")
+                continue
+            lines.extend(format_github_prs(pulls, window))
+        else:
+            # glab targets the authenticated host of the current directory's git
+            # remote, not necessarily this repo's, so the host is passed explicitly.
+            # GitLab's after/before are also day-granular and exclude their own
+            # boundary day, so the request is widened by a day on each side and
+            # re-checked against the exact window here.
+            after = window.start.date() - timedelta(days=1)
+            before = window.end.date() + timedelta(days=1)
+            raw = run_tool(
+                "glab",
+                "api",
+                "--paginate",
+                "--hostname",
+                host,
+                f"events?after={after:%Y-%m-%d}&before={before:%Y-%m-%d}&per_page=100",
+            )
+            if raw is None:
+                problems.append(f"{host}: could not be read")
+                continue
+            events = parse_json(raw)
+            if events is None:
+                problems.append(f"{host}: response could not be parsed")
+                continue
+            lines.extend(format_events(host, events, window))
+    return lines, problems
+
+
+def load_index():
+    """Every known session, as csess reports it, plus a problem if it could not be read.
+
+    Blank output is a quiet day and not a problem; csess being unrunnable or
+    answering with something that does not parse both are.
+    """
+    raw = run_tool("csess", "list", "-a", "--json")
+    if raw is None:
+        return [], "csess: could not be read"
+    if not raw:
+        return [], None
+    parsed = parse_json(raw)
+    if parsed is None:
+        return [], "csess: response could not be parsed"
+    return (parsed if isinstance(parsed, list) else []), None
+
+
+def session_heading(session):
+    where = session.project
+    if session.worktree:
+        where = f"{where}/{session.worktree}"
+    return f"### {where} ({session.branch or '-'}) {session.title}"
+
+
+def render(window, sessions, commits, mr_lines, problems):
+    """The digest the morning-summary skill reads."""
+    out = ["# standup digest", "", f"window: {window.label}", "", "## sessions"]
+    if not sessions:
+        out.append("")
+        out.append("none")
+    for session in sessions:
+        out += ["", session_heading(session)]
+        if session.recap:
+            out.append(f"recap: {clean(session.recap, 600)}")
+        out.append(f"transcript: {session.transcript}")
+        for turn in prompts(session):
+            line = clean(turn.text, PROMPT_LIMIT)
+            if turn.repeats > 1:
+                line = f"{line} (repeated {turn.repeats} times)"
+            out.append(f"- prompt {turn.when:%Y-%m-%d %H:%M} {line}")
+        for turn in conclusions(session):
+            out.append(
+                f"- said {turn.when:%Y-%m-%d %H:%M} {clean(turn.text, CONCLUSION_LIMIT)}"
+            )
+
+    out += ["", "## commits"]
+    out.append("" if commits else "none")
+    for commit in sorted(commits, key=lambda c: c.when):
+        out.append(f"- {commit.when:%Y-%m-%d} {commit.repo} {commit.sha} {commit.subject}")
+
+    out += ["", "## merge requests"]
+    out.append("" if mr_lines else "none")
+    out += [f"- {line}" for line in mr_lines]
+
+    if problems:
+        out += ["", "## problems"] + [f"- {p}" for p in problems]
+    return "\n".join(out) + "\n"
+
+
+def nothing_human_before_today(sessions, now):
+    """True when no person-driven activity falls before today."""
+    today_start = start_of(now.date())
+    for session in sessions:
+        earlier = [turn for turn in session.turns if turn.when < today_start]
+        if not user_prompts(earlier) or is_automated_turns(earlier):
+            continue
+        return False
+    return True
+
+
+def gather(now, since, until):
+    """Run the whole pipeline, widening past a day of only automated activity once."""
+    index, index_problem = load_index()
+    window = compute_window(now, since, until)
+    pin_end = until is not None
+    sessions = drop_summary_sessions(select_sessions(index, window, pin_end))
+    if nothing_human_before_today(sessions, now) and not since and not until:
+        window = widen(window)
+        sessions = drop_summary_sessions(select_sessions(index, window, pin_end))
+    repos = discover_repos(sessions)
+    commits = [c for repo in repos for c in commits_in(repo, window)]
+    mr_lines, problems = mr_activity(repos, window)
+    if index_problem:
+        problems = [index_problem, *problems]
+    return render(window, sessions, commits, mr_lines, problems)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="standup-digest",
+        description="Gather one working day of sessions, commits and MR activity.",
+    )
+    parser.add_argument(
+        "--since", metavar="WHEN", help="12h, 14d, 2w, YYYY-MM-DD or YYYY-MM-DDTHH:MM"
+    )
+    parser.add_argument("--until", metavar="WHEN", help="same forms; defaults to now")
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    now = datetime.now().astimezone()
+    try:
+        if args.since:
+            parse_boundary(args.since, now)
+        if args.until:
+            parse_boundary(args.until, now)
+    except ValueError as exc:
+        sys.exit(f"standup-digest: {exc}")
+    sys.stdout.write(gather(now, args.since, args.until))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

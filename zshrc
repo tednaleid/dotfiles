@@ -286,6 +286,15 @@ mrreview() {
     "/review-branch $num"
 }
 
+# Daily standup summary:  morning-summary  |  morning-summary --since 4d
+# Stays interactive afterwards so the summary can be reworked in place.
+morning-summary() {
+  # red surface for the standup
+  montty surface color red
+
+  claude -n "morning-summary-$(date +%Y-%m-%d)" "/morning-summary${*:+ $*}"
+}
+
 
 ## PRIVATE / HOST SPECIFIC ############################################ 
 
