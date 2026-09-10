@@ -42,6 +42,7 @@ Rule #1: If you want exception to ANY rule, YOU MUST STOP and get explicit permi
 # Writing documentation
 
 - NEVER use emojis, emdashes, or hyperbole.
+- NEVER label something with rhetorical parallelism ("Two doors, one key") or antithesis ("Not X, but Y") Name subjects plainly.
 
 ## Getting help
 
