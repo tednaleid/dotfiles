@@ -49,6 +49,14 @@ messages do not explain what happened, read that one transcript directly
 with the path in its `transcript:` line. Do this for one or two sessions at
 most.
 
+A `## merge request links` section lists each merge request once, as
+`- !<iid> <url>  <title>`. The url is the link target for that `!<iid>`, and
+the title is the raw material for its parenthetical. A merge request that
+appears only in session prose is absent here and has no url.
+
+A `jira base:` line near the top gives the JIRA site. A key links to
+`<base>/browse/<KEY>`. The line is absent when no JIRA site is configured.
+
 A `## problems` section lists a host or tool the digest could not read: a
 `csess` failure, or a GitLab/GitHub API call that did not respond or did not
 parse. Whichever section that source feeds (`## sessions` or
@@ -110,7 +118,8 @@ parenthetical named in the Rules section below; otherwise it is bare.
 ## Slack
 
 Y: (Friday 09-04, Monday was Labor Day)
-- <one bullet per story or thread, leading with the ticket or MR number>
+- [!367](url) (streamlit app removal) approved and merged. <what it means>
+- Chase Ryan's approval on [!352](url) ([FORGE-404](url) module onboarding docs)
 
 T:
 - <candidates from recap Next: lines, MRs awaiting approval, work already
@@ -132,6 +141,30 @@ T:
   smallest ones merge or drop. A standup is not a changelog.
 - Lead each Slack bullet with the ticket or MR number when there is one.
   Read them from branch names and MR titles.
+
+The next four rules apply to the Slack section only. Slack renders markdown,
+and that section gets read by people who were not in any of these sessions.
+The talking points are for the user alone and stay plain text.
+
+- Link every reference. `!367` becomes `[!367](url)` using the url from
+  `## merge request links`. `FORGE-404` becomes
+  `[FORGE-404](<jira base>/browse/FORGE-404)`. A JIRA key links from the key
+  alone, so link every one whenever a `jira base:` line is present. A merge
+  request links only when the links section lists it; leave the others as
+  plain `!367` rather than guessing a url that may 404.
+- Follow each reference with a parenthetical of five words or fewer saying
+  what it is, so the line is not all magic numbers. Compress the MR title
+  from the links section, or use what the sessions say. `!275` with the title
+  "FORGE-332: Pool and retry OMNI connections" becomes
+  `[!275](url) (pool omni connections)`. Skip the parenthetical only when the
+  surrounding sentence already says what the thing is.
+- Write for a teammate, not for the user's own recall. Cut anything only the
+  user can resolve: review finding ids, local branch names, scratch file
+  paths. "Finish reviewing !275" beats "decide on the two remaining !275
+  test-coverage findings (f3, f6)".
+- Leave the user's own deliberation out. "Decide whether to post the drafted
+  reply" is a private next action, not a standup item, and it is usually
+  already implied by the bullet about getting the thing merged.
 - Meetings never appear in the digest. Always leave the
   `[meetings / anything not in a session]` line for the user to fill.
 - Never report a merge, a deploy, or a fix as done unless the digest says

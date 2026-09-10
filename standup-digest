@@ -8,6 +8,7 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +30,7 @@ CONCLUSION_LIMIT = 400
 AUTOMATION_REPEATS = 3
 
 REMOTE_HOST = re.compile(r"^(?:[\w.+-]+@|\w+://(?:[^@/]+@)?)([^:/]+)")
+TWG_DOMAIN = re.compile(r"^\s*domain\s*=\s*(\S+)\s*$", re.MULTILINE)
 MR_ACTIONS = {"opened", "accepted", "approved", "commented on", "closed"}
 
 
@@ -356,6 +358,38 @@ def remote_host(repo):
     return match.group(1) if match else None
 
 
+@dataclass
+class MergeRequest:
+    iid: int
+    url: str | None
+    title: str
+
+
+def jira_base():
+    """The JIRA site URL, from the environment or from twg's local config."""
+    url = os.environ.get("JIRA_URL")
+    if url:
+        return url.rstrip("/")
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    try:
+        text = (config / "twg" / "auth.conf").read_text()
+    except OSError:
+        return None
+    match = TWG_DOMAIN.search(text)
+    return f"https://{match.group(1)}" if match else None
+
+
+def project_web_urls(host, project_ids):
+    """Web URL per project id, one lookup for each distinct project."""
+    urls = {}
+    for project_id in sorted({p for p in project_ids if p is not None}):
+        raw = run_tool("glab", "api", "--hostname", host, f"projects/{project_id}")
+        project = parse_json(raw) if raw else None
+        if isinstance(project, dict) and project.get("web_url"):
+            urls[project_id] = project["web_url"]
+    return urls
+
+
 def resolve_mr_iid(event):
     """The merge request iid an event belongs to, following a comment to its parent."""
     target_type = event.get("target_type")
@@ -396,9 +430,8 @@ def parse_json(raw):
     return None
 
 
-def format_events(host, events, window):
-    """Render a GitLab event feed's merge request activity inside the window, one line each."""
-    lines = []
+def mr_events(events, window):
+    """The merge request events inside the window, with their resolved iid."""
     for event in events:
         action = event.get("action_name", "")
         if not any(action.startswith(known) for known in MR_ACTIONS):
@@ -409,9 +442,32 @@ def format_events(host, events, window):
         when = datetime.fromisoformat(event["created_at"]).astimezone()
         if not window.start <= when <= window.end:
             continue
+        yield event, iid, when
+
+
+def format_events(host, events, window):
+    """Render a GitLab event feed's merge request activity inside the window, one line each."""
+    lines = []
+    for event, iid, when in mr_events(events, window):
+        action = event.get("action_name", "")
         title = clean(event.get("target_title") or "", 120)
         lines.append(f"{when:%Y-%m-%d} {host} !{iid} {action}: {title}")
     return lines
+
+
+def mr_references(events, window, urls):
+    """One linkable reference per merge request, however many events it produced."""
+    refs = {}
+    for event, iid, _ in mr_events(events, window):
+        if iid in refs:
+            continue
+        base = urls.get(event.get("project_id"))
+        refs[iid] = MergeRequest(
+            iid=iid,
+            url=f"{base}/-/merge_requests/{iid}" if base else None,
+            title=clean(event.get("target_title") or "", 120),
+        )
+    return [refs[iid] for iid in sorted(refs)]
 
 
 def format_github_prs(pulls, window):
@@ -428,8 +484,8 @@ def format_github_prs(pulls, window):
 
 
 def mr_activity(repos, window):
-    """Merge request events in the window, plus a list of what could not be read."""
-    lines, problems = [], []
+    """Merge request events, their linkable references, and what could not be read."""
+    lines, refs, problems = [], [], []
     hosts = {remote_host(r) for r in repos}
     for host in sorted(h for h in hosts if h):
         if host == "github.com":
@@ -476,7 +532,11 @@ def mr_activity(repos, window):
                 problems.append(f"{host}: response could not be parsed")
                 continue
             lines.extend(format_events(host, events, window))
-    return lines, problems
+            urls = project_web_urls(
+                host, [e.get("project_id") for e, _, _ in mr_events(events, window)]
+            )
+            refs.extend(mr_references(events, window, urls))
+    return lines, refs, problems
 
 
 def load_index():
@@ -503,9 +563,12 @@ def session_heading(session):
     return f"### {where} ({session.branch or '-'}) {session.title}"
 
 
-def render(window, sessions, commits, mr_lines, problems):
+def render(window, sessions, commits, mr_lines, mr_refs, jira, problems):
     """The digest the morning-summary skill reads."""
-    out = ["# standup digest", "", f"window: {window.label}", "", "## sessions"]
+    out = ["# standup digest", "", f"window: {window.label}"]
+    if jira:
+        out.append(f"jira base: {jira}")
+    out += ["", "## sessions"]
     if not sessions:
         out.append("")
         out.append("none")
@@ -532,6 +595,11 @@ def render(window, sessions, commits, mr_lines, problems):
     out += ["", "## merge requests"]
     out.append("" if mr_lines else "none")
     out += [f"- {line}" for line in mr_lines]
+
+    if mr_refs:
+        out += ["", "## merge request links", ""]
+        for ref in mr_refs:
+            out.append(f"- !{ref.iid} {ref.url or '(url unknown)'}  {ref.title}")
 
     if problems:
         out += ["", "## problems"] + [f"- {p}" for p in problems]
@@ -560,10 +628,10 @@ def gather(now, since, until):
         sessions = drop_summary_sessions(select_sessions(index, window, pin_end))
     repos = discover_repos(sessions)
     commits = [c for repo in repos for c in commits_in(repo, window)]
-    mr_lines, problems = mr_activity(repos, window)
+    mr_lines, mr_refs, problems = mr_activity(repos, window)
     if index_problem:
         problems = [index_problem, *problems]
-    return render(window, sessions, commits, mr_lines, problems)
+    return render(window, sessions, commits, mr_lines, mr_refs, jira_base(), problems)
 
 
 def build_parser():

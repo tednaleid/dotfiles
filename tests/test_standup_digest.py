@@ -670,7 +670,7 @@ class TestMrActivityDegradation:
         monkeypatch.setattr(sd, "run_tool", lambda *a, **k: None)
         window = sd.compute_window(datetime.now().astimezone(), since="1d", until=None)
 
-        lines, problems = sd.mr_activity([repo], window)
+        lines, _refs, problems = sd.mr_activity([repo], window)
 
         assert lines == []
         assert any("gitlab.example.com" in p for p in problems)
@@ -680,7 +680,7 @@ class TestMrActivityDegradation:
         monkeypatch.setattr(sd, "run_tool", lambda *a, **k: "not json")
         window = sd.compute_window(datetime.now().astimezone(), since="1d", until=None)
 
-        lines, problems = sd.mr_activity([repo], window)
+        lines, _refs, problems = sd.mr_activity([repo], window)
 
         assert lines == []
         assert any("gitlab.example.com" in p for p in problems)
@@ -771,7 +771,7 @@ class TestMrActivityGithub:
         monkeypatch.setattr(sd, "run_tool", lambda *a, **k: payload)
         window = sd.compute_window(now, since="1d", until=None)
 
-        lines, problems = sd.mr_activity([repo], window)
+        lines, _refs, problems = sd.mr_activity([repo], window)
 
         assert problems == []
         assert any("#7" in line and "fix the parser" in line for line in lines)
@@ -781,7 +781,7 @@ class TestMrActivityGithub:
         monkeypatch.setattr(sd, "run_tool", lambda *a, **k: None)
         window = sd.compute_window(datetime.now().astimezone(), since="1d", until=None)
 
-        lines, problems = sd.mr_activity([repo], window)
+        lines, _refs, problems = sd.mr_activity([repo], window)
 
         assert lines == []
         assert any("github.com" in p for p in problems)
@@ -791,7 +791,7 @@ class TestMrActivityGithub:
         monkeypatch.setattr(sd, "run_tool", lambda *a, **k: "not json")
         window = sd.compute_window(datetime.now().astimezone(), since="1d", until=None)
 
-        lines, problems = sd.mr_activity([repo], window)
+        lines, _refs, problems = sd.mr_activity([repo], window)
 
         assert lines == []
         assert any("github.com" in p for p in problems)
@@ -909,7 +909,7 @@ class TestGatherSurfacesIndexProblem:
     def test_a_csess_failure_becomes_a_problem_line_in_the_digest(self, monkeypatch):
         monkeypatch.setattr(sd, "load_index", lambda: ([], "csess: could not be read"))
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 09:00"), None, None)
 
@@ -918,7 +918,7 @@ class TestGatherSurfacesIndexProblem:
     def test_a_quiet_day_reports_no_problem(self, monkeypatch):
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 09:00"), None, None)
 
@@ -927,7 +927,9 @@ class TestGatherSurfacesIndexProblem:
 
 class TestRender:
     def test_includes_the_window_label(self):
-        out = sd.render(sd.default_window(local("2026-09-08 09:00")), [], [], [], [])
+        out = sd.render(
+            sd.default_window(local("2026-09-08 09:00")), [], [], [], [], None, []
+        )
 
         assert "2026-09-07" in out
 
@@ -937,7 +939,7 @@ class TestRender:
         )
         window = sd.default_window(local("2026-09-08 09:00"))
 
-        out = sd.render(window, [session], [], [], [])
+        out = sd.render(window, [session], [], [], [], None, [])
 
         assert "parser-work" in out
         assert "we fixed it" in out
@@ -948,7 +950,7 @@ class TestRender:
         session = make_session([user("q" * 400)])
         window = sd.default_window(local("2026-09-08 09:00"))
 
-        out = sd.render(window, [session], [], [], [])
+        out = sd.render(window, [session], [], [], [], None, [])
 
         assert "q" * 200 in out
         assert "q" * 201 not in out
@@ -957,21 +959,21 @@ class TestRender:
         session = make_session([user("today's work", "2026-09-07 10:00")])
         window = sd.default_window(local("2026-09-08 09:00"))
 
-        assert "2026-09-07" in sd.render(window, [session], [], [], [])
+        assert "2026-09-07" in sd.render(window, [session], [], [], [], None, [])
 
     def test_a_folded_prompt_keeps_its_repeat_marker_when_truncated(self):
         long_poll = "x" * 400
         session = make_session([user(long_poll), user(long_poll), user(long_poll)])
         window = sd.default_window(local("2026-09-08 09:00"))
 
-        out = sd.render(window, [session], [], [], [])
+        out = sd.render(window, [session], [], [], [], None, [])
 
         assert "(repeated 3 times)" in out
 
     def test_lists_problems_when_a_host_failed(self):
         window = sd.default_window(local("2026-09-08 09:00"))
 
-        out = sd.render(window, [], [], [], ["gitlab.example.com: could not be read"])
+        out = sd.render(window, [], [], [], [], None, ["gitlab.example.com: could not be read"])
 
         assert "gitlab.example.com" in out
 
@@ -987,7 +989,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 09:00"), None, None)
 
@@ -1004,7 +1006,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 09:00"), since="2026-09-01", until=None)
 
@@ -1023,7 +1025,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 09:00"), None, None)
 
@@ -1040,7 +1042,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         sd.gather(local("2026-09-08 09:00"), None, None)
 
@@ -1061,7 +1063,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 09:00"), None, None)
 
@@ -1084,7 +1086,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 10:00"), None, None)
 
@@ -1109,7 +1111,7 @@ class TestGatherWidening:
         monkeypatch.setattr(sd, "load_index", lambda: ([], None))
         monkeypatch.setattr(sd, "select_sessions", fake_select)
         monkeypatch.setattr(sd, "discover_repos", lambda s: [])
-        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], []))
+        monkeypatch.setattr(sd, "mr_activity", lambda r, w: ([], [], []))
 
         out = sd.gather(local("2026-09-08 10:00"), None, None)
 
@@ -1125,3 +1127,147 @@ class TestMain:
             sd.main(["--since", "bogus"])
 
         assert "bad boundary" in str(exit_info.value)
+
+
+def mr_event(iid, title, when="2026-09-04T10:00:00-05:00", project_id=1):
+    return {
+        "action_name": "opened",
+        "target_type": "MergeRequest",
+        "target_iid": iid,
+        "target_title": title,
+        "created_at": when,
+        "project_id": project_id,
+    }
+
+
+class TestJiraBase:
+    def test_prefers_the_environment(self, monkeypatch):
+        monkeypatch.setenv("JIRA_URL", "https://env.example.net")
+
+        assert sd.jira_base() == "https://env.example.net"
+
+    def test_strips_a_trailing_slash(self, monkeypatch):
+        monkeypatch.setenv("JIRA_URL", "https://env.example.net/")
+
+        assert sd.jira_base() == "https://env.example.net"
+
+    def test_falls_back_to_the_twg_config(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("JIRA_URL", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        conf = tmp_path / "twg" / "auth.conf"
+        conf.parent.mkdir(parents=True)
+        conf.write_text("email=someone@example.com\ndomain=site.atlassian.net\n")
+
+        assert sd.jira_base() == "https://site.atlassian.net"
+
+    def test_returns_none_without_any_configuration(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("JIRA_URL", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+        assert sd.jira_base() is None
+
+    def test_returns_none_when_the_config_has_no_domain(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("JIRA_URL", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        conf = tmp_path / "twg" / "auth.conf"
+        conf.parent.mkdir(parents=True)
+        conf.write_text("email=someone@example.com\n")
+
+        assert sd.jira_base() is None
+
+
+class TestProjectWebUrls:
+    def test_looks_each_distinct_project_up_once(self, monkeypatch):
+        calls = []
+
+        def fake_run_tool(*args):
+            calls.append(args)
+            return '{"web_url": "https://gitlab.example.com/group/thing"}'
+
+        monkeypatch.setattr(sd, "run_tool", fake_run_tool)
+
+        urls = sd.project_web_urls("gitlab.example.com", [7, 7, 7])
+
+        assert len(calls) == 1
+        assert urls == {7: "https://gitlab.example.com/group/thing"}
+
+    def test_skips_a_project_that_cannot_be_read(self, monkeypatch):
+        monkeypatch.setattr(sd, "run_tool", lambda *a: None)
+
+        assert sd.project_web_urls("gitlab.example.com", [7]) == {}
+
+    def test_skips_a_project_with_no_web_url(self, monkeypatch):
+        monkeypatch.setattr(sd, "run_tool", lambda *a: '{"id": 7}')
+
+        assert sd.project_web_urls("gitlab.example.com", [7]) == {}
+
+
+class TestMrReferences:
+    def test_one_reference_per_merge_request_however_many_events(self):
+        window = sd.compute_window(
+            local("2026-09-05 09:00"), since="2026-09-04", until="2026-09-05T09:00"
+        )
+        events = [mr_event(367, "FORGE-415: remove the streamlit apps") for _ in range(4)]
+
+        refs = sd.mr_references(events, window, {1: "https://gitlab.example.com/g/p"})
+
+        assert len(refs) == 1
+        assert refs[0].iid == 367
+        assert refs[0].url == "https://gitlab.example.com/g/p/-/merge_requests/367"
+        assert refs[0].title == "FORGE-415: remove the streamlit apps"
+
+    def test_leaves_the_url_unset_when_the_project_is_unknown(self):
+        window = sd.compute_window(
+            local("2026-09-05 09:00"), since="2026-09-04", until="2026-09-05T09:00"
+        )
+
+        refs = sd.mr_references([mr_event(9, "no project")], window, {})
+
+        assert refs[0].url is None
+
+    def test_ignores_events_outside_the_window(self):
+        window = sd.compute_window(
+            local("2026-09-05 09:00"), since="2026-09-04", until="2026-09-05T09:00"
+        )
+        events = [mr_event(1, "before", when="2026-09-03T10:00:00-05:00")]
+
+        assert sd.mr_references(events, window, {}) == []
+
+
+class TestRenderReferences:
+    def test_renders_a_link_block_for_each_merge_request(self):
+        window = sd.default_window(local("2026-09-08 09:00"))
+        refs = [sd.MergeRequest(iid=367, url="https://g/p/-/merge_requests/367", title="remove apps")]
+
+        out = sd.render(window, [], [], [], refs, None, [])
+
+        assert "## merge request links" in out
+        assert "!367" in out
+        assert "https://g/p/-/merge_requests/367" in out
+        assert "remove apps" in out
+
+    def test_omits_the_block_when_there_are_no_references(self):
+        window = sd.default_window(local("2026-09-08 09:00"))
+
+        assert "## merge request links" not in sd.render(window, [], [], [], [], None, [])
+
+    def test_reports_a_reference_whose_url_is_unknown(self):
+        window = sd.default_window(local("2026-09-08 09:00"))
+        refs = [sd.MergeRequest(iid=9, url=None, title="mystery")]
+
+        out = sd.render(window, [], [], [], refs, None, [])
+
+        assert "!9" in out
+        assert "url unknown" in out
+
+    def test_shows_the_jira_base_when_one_resolved(self):
+        window = sd.default_window(local("2026-09-08 09:00"))
+
+        out = sd.render(window, [], [], [], [], "https://site.atlassian.net", [])
+
+        assert "jira base: https://site.atlassian.net" in out
+
+    def test_omits_the_jira_base_when_none_resolved(self):
+        window = sd.default_window(local("2026-09-08 09:00"))
+
+        assert "jira base:" not in sd.render(window, [], [], [], [], None, [])
