@@ -52,7 +52,8 @@ writes back into the repo.
 ## How to run
 `just all` sets up a machine, or `just <component>` for one piece. Requires
 `git`, `just`, and `jq`. On a fresh Mac, run `just formulae` before `just veer`
-so the veer binary is on PATH.
+so the veer binary is on PATH. `just claude` installs the Claude Code CLI via
+`install.sh` when it is not already on PATH.
 
 ## Dig deeper
 - README.md -- detailed SSH (per-machine key), Claude Code (statusline, gradient env), and veer setup notes

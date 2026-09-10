@@ -139,7 +139,20 @@ ssh-key:
     echo "  any servers you ssh into (append to their ~/.ssh/authorized_keys)"
 
 # set up claude configuration
-claude: claude-md claude-skills claude-settings claude-install-plugins
+claude: claude-cli claude-md claude-skills claude-settings claude-install-plugins
+
+# install the claude code CLI if it isn't already on PATH (it self-updates after that)
+claude-cli:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="{{home_directory()}}/.local/bin:$PATH"
+    if command -v claude &>/dev/null; then
+        echo "✓ claude $(claude --version) already installed"
+        exit 0
+    fi
+    echo "→ Installing claude code"
+    curl -fsSL https://claude.ai/install.sh | bash
+    echo "✓ claude $(claude --version) installed"
 
 [unix]
 claude-md:
@@ -220,6 +233,7 @@ claude-settings:
 claude-install-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
+    export PATH="{{home_directory()}}/.local/bin:$PATH"
     marketplaces=$(claude plugin marketplace list 2>&1)
     for repo in {{_claude_marketplaces}}; do
         if grep -qF "$repo" <<<"$marketplaces"; then
