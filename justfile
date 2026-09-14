@@ -37,6 +37,7 @@ default:
     @echo "  just csess     - set up the Claude Code session browser"
     @echo "  just standup-digest - set up the daily standup gatherer"
     @echo "  just glab-comment - set up the GitLab MR comment poster"
+    @echo "  just morning-login - set up the cloud credential refresher"
     @echo "  just test      - run the python unit tests"
     @echo "  just lint      - syntax-check zsh, shellcheck hooks, ruff the scripts, validate ghostty config"
     @echo "  just fmt       - ruff-fix and format the python scripts"
@@ -45,7 +46,7 @@ default:
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks formulae bun playwright csess standup-digest glab-comment veer install-hooks
+all: git zsh ssh ghostty atuin claude casks formulae bun playwright csess standup-digest glab-comment morning-login veer install-hooks
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 # skips files whose dest dir is a symlink pointing outside dest, so a symlinked
@@ -388,6 +389,11 @@ standup-digest:
 glab-comment:
     @mkdir -p {{home_directory()}}/.local/bin
     @just _symlink {{justfile_directory()}}/glab-comment {{home_directory()}}/.local/bin/glab-comment
+
+# set up morning-login, the cloud credential refresher
+morning-login:
+    @mkdir -p {{home_directory()}}/.local/bin
+    @just _symlink {{justfile_directory()}}/morning-login {{home_directory()}}/.local/bin/morning-login
 
 # run the python unit tests
 test:

@@ -1,0 +1,332 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# ///
+
+# ABOUTME: probe gcloud ADC and AWS SSO credentials and refresh whichever has expired
+# ABOUTME: --check reports without acting, --diagnose walks through a one-off experiment
+
+import argparse
+import configparser
+import json
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+HOME = Path.home()
+AWS_CONFIG = HOME / ".aws" / "config"
+SSO_CACHE = HOME / ".aws" / "sso" / "cache"
+ADC = HOME / ".config" / "gcloud" / "application_default_credentials.json"
+DIAGNOSIS = HOME / ".local" / "state" / "morning-login" / "last-diagnosis.md"
+
+PROFILE_ENV = "MORNING_LOGIN_AWS_PROFILE"
+
+OK = "ok"
+EXPIRED = "expired"
+SKIPPED = "skipped"
+
+
+@dataclass
+class Leg:
+    """One credential we probe and, when it has lapsed, refresh."""
+
+    name: str
+    state: str
+    detail: str = ""
+
+
+def exit_code(legs):
+    """Fail only when a leg is still expired once we are done with it."""
+    return 1 if any(leg.state == EXPIRED for leg in legs) else 0
+
+
+@dataclass(frozen=True)
+class AwsTarget:
+    """The profile to probe and the sso-session that backs it."""
+
+    profile: str
+    session: str
+    start_url: str
+
+
+def resolve_aws_target(config_text, profile=None):
+    """Pick the profile to probe out of an ~/.aws/config body.
+
+    Without an explicit profile, takes the first one backed by an sso-session.
+    Returns None when no such profile exists.
+    """
+    parser = configparser.ConfigParser()
+    parser.read_string(config_text)
+
+    sessions = {
+        name.split(None, 1)[1]: parser[name]
+        for name in parser.sections()
+        if name.startswith("sso-session ")
+    }
+
+    for name in parser.sections():
+        if not name.startswith("profile "):
+            continue
+        candidate = name.split(None, 1)[1]
+        if profile is not None and candidate != profile:
+            continue
+        session = parser[name].get("sso_session")
+        if session in sessions:
+            return AwsTarget(
+                profile=candidate,
+                session=session,
+                start_url=sessions[session].get("sso_start_url", ""),
+            )
+    return None
+
+
+def adc_quota_project(adc_text):
+    """Read the quota project already pinned in an ADC file body."""
+    try:
+        return json.loads(adc_text).get("quota_project_id")
+    except (ValueError, AttributeError):
+        return None
+
+
+def _same_start_url(left, right):
+    return left.rstrip("#/") == right.rstrip("#/")
+
+
+def sso_token_expiry(entries, start_url):
+    """Find when the cached SSO access token for a start URL runs out.
+
+    Entries are parsed ~/.aws/sso/cache/*.json bodies. Those without an access
+    token are client registrations rather than tokens, and are skipped.
+    """
+    for entry in entries:
+        if "accessToken" not in entry:
+            continue
+        if not _same_start_url(entry.get("startUrl", ""), start_url):
+            continue
+        expires_at = entry.get("expiresAt")
+        if not expires_at:
+            return None
+        return datetime.fromisoformat(expires_at)
+    return None
+
+
+def read_text(path):
+    try:
+        return path.read_text()
+    except OSError:
+        return ""
+
+
+def sso_cache_entries():
+    entries = []
+    for path in sorted(SSO_CACHE.glob("*.json")) if SSO_CACHE.is_dir() else []:
+        try:
+            entries.append(json.loads(path.read_text()))
+        except (OSError, ValueError):
+            continue
+    return entries
+
+
+def probe(command):
+    """Run a token-minting command with no way to prompt and no output kept.
+
+    stdout goes to /dev/null so a token never reaches this process, and stdin is
+    closed so an expired credential fails instead of blocking on a challenge.
+    """
+    result = subprocess.run(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def run(command):
+    """Run a command with the terminal attached so it can prompt or open a browser."""
+    return subprocess.run(command, check=False).returncode == 0
+
+
+def gcloud_leg(act):
+    name = "gcloud ADC"
+    if not shutil.which("gcloud"):
+        return Leg(name, SKIPPED, "gcloud is not installed")
+
+    adc_probe = ["gcloud", "auth", "application-default", "print-access-token"]
+    if probe(adc_probe):
+        return Leg(name, OK)
+    if not act:
+        return Leg(name, EXPIRED)
+
+    # Read the pinned quota project before the login overwrites the ADC file.
+    quota = adc_quota_project(read_text(ADC))
+
+    # flush so the notice lands before the child's output when stdout is a pipe
+    print(f"  {name}: expired, opening a browser", flush=True)
+    # --force because gcloud short-circuits the flow when the user credential is
+    # still valid, which is exactly the case when only ADC has lapsed.
+    if not run(["gcloud", "auth", "login", "--force", "--update-adc"]):
+        return Leg(name, EXPIRED, "gcloud auth login did not complete")
+    if quota:
+        run(["gcloud", "auth", "application-default", "set-quota-project", quota])
+
+    return Leg(name, OK if probe(adc_probe) else EXPIRED)
+
+
+def aws_leg(act, profile):
+    name = "aws sso"
+    if not shutil.which("aws"):
+        return Leg(name, SKIPPED, "aws is not installed")
+
+    target = resolve_aws_target(read_text(AWS_CONFIG), profile)
+    if target is None:
+        return Leg(name, SKIPPED, "no sso-backed profile in ~/.aws/config")
+
+    sts = ["aws", "sts", "get-caller-identity", "--profile", target.profile]
+    if probe(sts):
+        return Leg(name, OK, expiry_detail(target))
+    if not act:
+        return Leg(name, EXPIRED)
+
+    print(f"  {name}: expired, opening a browser", flush=True)
+    if not run(["aws", "sso", "login", "--sso-session", target.session]):
+        return Leg(name, EXPIRED, "aws sso login did not complete")
+
+    return Leg(name, OK if probe(sts) else EXPIRED, expiry_detail(target))
+
+
+def expiry_detail(target):
+    expiry = sso_token_expiry(sso_cache_entries(), target.start_url)
+    if expiry is None:
+        return target.profile
+    local = expiry.astimezone().strftime("%H:%M")
+    return f"{target.profile}, token good until {local}"
+
+
+def report(legs):
+    width = max(len(leg.name) for leg in legs)
+    for leg in legs:
+        line = f"  {leg.name:<{width}}  {leg.state}"
+        if leg.detail:
+            line += f"  ({leg.detail})"
+        print(line)
+
+
+CHALLENGES = [
+    "a password prompt in the terminal",
+    "a security key touch prompt",
+    "a message telling me to run gcloud auth login for SAML",
+    "no prompt at all, it just printed a token",
+]
+
+BROWSER_COST = [
+    "two clicks, already signed in",
+    "password and a one-time code",
+    "a security key touch",
+    "did not open a browser",
+]
+
+
+def ask(question, options):
+    print(f"\n{question}")
+    for index, option in enumerate(options, 1):
+        print(f"  {index}. {option}")
+    while True:
+        answer = input("> ").strip()
+        if answer.isdigit() and 1 <= int(answer) <= len(options):
+            return options[int(answer) - 1]
+        print(f"enter 1-{len(options)}")
+
+
+def confirm(question):
+    return input(f"\n{question} [y/N] ").strip().lower().startswith("y")
+
+
+def diagnose(profile):
+    print("Run this BEFORE re-authenticating. Logging in destroys the evidence.\n")
+
+    print("Probing the gcloud user credential. Watch what it asks for, then")
+    print("press Ctrl-C at the prompt rather than answering it.\n")
+    try:
+        subprocess.run(
+            ["gcloud", "auth", "print-access-token"],
+            stdout=subprocess.DEVNULL,
+            check=False,
+        )
+    except KeyboardInterrupt:
+        print()
+    challenge = ask("What did gcloud ask for?", CHALLENGES)
+
+    target = resolve_aws_target(read_text(AWS_CONFIG), profile)
+    if target is None:
+        aws_state = "no sso-backed profile found"
+    else:
+        sts = ["aws", "sts", "get-caller-identity", "--profile", target.profile]
+        aws_state = "still valid" if probe(sts) else "expired"
+    print(f"\nAWS SSO token: {aws_state}")
+
+    google_cost = aws_cost = "not observed"
+    if confirm("Repair both now?"):
+        legs = [gcloud_leg(act=True), aws_leg(act=True, profile=profile)]
+        print()
+        report(legs)
+        google_cost = ask("What did the Google browser flow cost?", BROWSER_COST)
+        aws_cost = ask("What did the AWS browser flow cost?", BROWSER_COST)
+
+    record = "\n".join(
+        [
+            f"# morning-login diagnosis {datetime.now().astimezone():%Y-%m-%d %H:%M}",
+            "",
+            f"- gcloud reauth challenge: {challenge}",
+            f"- aws sso token overnight: {aws_state}",
+            f"- google browser flow cost: {google_cost}",
+            f"- aws browser flow cost: {aws_cost}",
+            "",
+        ]
+    )
+    DIAGNOSIS.parent.mkdir(parents=True, exist_ok=True)
+    DIAGNOSIS.write_text(record)
+    print(f"\n{record}\nSaved to {DIAGNOSIS}")
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Refresh whichever cloud credential has expired."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report what is valid without opening anything",
+    )
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="walk through a one-off experiment and record what was observed",
+    )
+    parser.add_argument(
+        "--aws-profile",
+        default=os.environ.get(PROFILE_ENV),
+        help=f"profile to probe (default: ${PROFILE_ENV}, else the first sso profile)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.diagnose:
+        return diagnose(args.aws_profile)
+
+    act = not args.check
+    legs = [gcloud_leg(act), aws_leg(act, args.aws_profile)]
+    report(legs)
+    return exit_code(legs)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

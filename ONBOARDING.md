@@ -46,6 +46,7 @@ writes back into the repo.
 - `claude-statusline.sh`, `claude-prompt-submit-hook.sh` -- Claude Code statusline + UserPromptSubmit hook
 - `veer_config.toml` -- global veer rules (symlinked; `veer add/remove --global` writes through)
 - `csess` -- Claude Code session browser (uv single-file script), installed to `~/.local/bin`; indexes `~/.claude/projects` and resumes a session via fzf
+- `morning-login` -- cloud credential refresher (uv single-file script), installed to `~/.local/bin`; probes gcloud ADC and AWS SSO and re-authenticates whichever expired
 - `tests/` -- pytest suite for the standalone scripts, run by `just test`
 - `.llm/` -- gitignored scratch (benchmarks, throwaway test scripts)
 
