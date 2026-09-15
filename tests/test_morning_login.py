@@ -48,6 +48,14 @@ class TestResolveAwsTarget:
         assert target.profile == "alpha-dev"
         assert target.session == "acme"
         assert target.start_url == "https://example.awsapps.com/start/#"
+        assert target.account_id == "111111111111"
+
+    def test_account_id_is_empty_when_the_profile_omits_it(self):
+        config = (
+            "[sso-session acme]\nsso_start_url = https://example.awsapps.com/start/\n\n"
+            "[profile alpha-dev]\nsso_session = acme\n"
+        )
+        assert ml.resolve_aws_target(config).account_id == ""
 
     def test_named_profile_overrides_the_first(self):
         target = ml.resolve_aws_target(AWS_CONFIG, profile="beta-dev")
@@ -111,6 +119,37 @@ class TestSsoTokenExpiry:
     def test_returns_none_when_the_matching_entry_has_no_expiry(self):
         entries = [{"startUrl": "https://example.awsapps.com/start/", "accessToken": "x"}]
         assert ml.sso_token_expiry(entries, "https://example.awsapps.com/start/") is None
+
+
+ROLE_CREDS = {
+    "ProviderType": "sso",
+    "Credentials": {
+        "AccessKeyId": "irrelevant",
+        "SecretAccessKey": "irrelevant",
+        "SessionToken": "irrelevant",
+        "Expiration": "2026-09-16T02:13:25Z",
+        "AccountId": "222222222222",
+    },
+}
+
+
+class TestRoleCredentialExpiry:
+    def test_finds_the_expiry_for_a_matching_account(self):
+        expiry = ml.role_credential_expiry([ROLE_CREDS], "222222222222")
+        assert expiry == datetime(2026, 9, 16, 2, 13, 25, tzinfo=timezone.utc)
+
+    def test_returns_none_when_no_entry_matches_the_account(self):
+        assert ml.role_credential_expiry([ROLE_CREDS], "111111111111") is None
+
+    def test_returns_none_when_the_matching_entry_has_no_expiration(self):
+        entry = {"Credentials": {"AccountId": "222222222222"}}
+        assert ml.role_credential_expiry([entry], "222222222222") is None
+
+    def test_ignores_entries_that_hold_no_credentials(self):
+        assert ml.role_credential_expiry([{"ProviderType": "sso"}], "222222222222") is None
+
+    def test_returns_none_when_the_account_is_unknown(self):
+        assert ml.role_credential_expiry([ROLE_CREDS], "") is None
 
 
 def leg(state):

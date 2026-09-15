@@ -20,6 +20,7 @@ from pathlib import Path
 HOME = Path.home()
 AWS_CONFIG = HOME / ".aws" / "config"
 SSO_CACHE = HOME / ".aws" / "sso" / "cache"
+CLI_CACHE = HOME / ".aws" / "cli" / "cache"
 ADC = HOME / ".config" / "gcloud" / "application_default_credentials.json"
 DIAGNOSIS = HOME / ".local" / "state" / "morning-login" / "last-diagnosis.md"
 
@@ -51,6 +52,7 @@ class AwsTarget:
     profile: str
     session: str
     start_url: str
+    account_id: str = ""
 
 
 def resolve_aws_target(config_text, profile=None):
@@ -80,6 +82,7 @@ def resolve_aws_target(config_text, profile=None):
                 profile=candidate,
                 session=session,
                 start_url=sessions[session].get("sso_start_url", ""),
+                account_id=parser[name].get("sso_account_id", ""),
             )
     return None
 
@@ -114,6 +117,25 @@ def sso_token_expiry(entries, start_url):
     return None
 
 
+def role_credential_expiry(entries, account_id):
+    """Find when the cached SSO role credentials for an account run out.
+
+    Entries are parsed ~/.aws/cli/cache/*.json bodies. These outlive the SSO
+    access token, so this is what decides whether AWS still works right now.
+    """
+    if not account_id:
+        return None
+    for entry in entries:
+        credentials = entry.get("Credentials", {})
+        if credentials.get("AccountId") != account_id:
+            continue
+        expiration = credentials.get("Expiration")
+        if not expiration:
+            return None
+        return datetime.fromisoformat(expiration)
+    return None
+
+
 def read_text(path):
     try:
         return path.read_text()
@@ -121,9 +143,9 @@ def read_text(path):
         return ""
 
 
-def sso_cache_entries():
+def cache_entries(directory):
     entries = []
-    for path in sorted(SSO_CACHE.glob("*.json")) if SSO_CACHE.is_dir() else []:
+    for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
         try:
             entries.append(json.loads(path.read_text()))
         except (OSError, ValueError):
@@ -201,11 +223,15 @@ def aws_leg(act, profile):
 
 
 def expiry_detail(target):
-    expiry = sso_token_expiry(sso_cache_entries(), target.start_url)
+    expiry = role_credential_expiry(cache_entries(CLI_CACHE), target.account_id)
     if expiry is None:
         return target.profile
     local = expiry.astimezone().strftime("%H:%M")
-    return f"{target.profile}, token good until {local}"
+    return f"{target.profile}, credentials good until {local}"
+
+
+def clock(expiry):
+    return "none" if expiry is None else expiry.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def report(legs):
@@ -263,12 +289,15 @@ def diagnose(profile):
     challenge = ask("What did gcloud ask for?", CHALLENGES)
 
     target = resolve_aws_target(read_text(AWS_CONFIG), profile)
+    sso_expiry = role_expiry = None
     if target is None:
         aws_state = "no sso-backed profile found"
     else:
         sts = ["aws", "sts", "get-caller-identity", "--profile", target.profile]
         aws_state = "still valid" if probe(sts) else "expired"
-    print(f"\nAWS SSO token: {aws_state}")
+        sso_expiry = sso_token_expiry(cache_entries(SSO_CACHE), target.start_url)
+        role_expiry = role_credential_expiry(cache_entries(CLI_CACHE), target.account_id)
+    print(f"\nAWS credentials: {aws_state}")
 
     google_cost = aws_cost = "not observed"
     if confirm("Repair both now?"):
@@ -283,7 +312,9 @@ def diagnose(profile):
             f"# morning-login diagnosis {datetime.now().astimezone():%Y-%m-%d %H:%M}",
             "",
             f"- gcloud reauth challenge: {challenge}",
-            f"- aws sso token overnight: {aws_state}",
+            f"- aws credentials before repair: {aws_state}",
+            f"- aws sso access token expiry: {clock(sso_expiry)}",
+            f"- aws role credential expiry: {clock(role_expiry)}",
             f"- google browser flow cost: {google_cost}",
             f"- aws browser flow cost: {aws_cost}",
             "",
