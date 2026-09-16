@@ -8,7 +8,7 @@ _casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/ground
 _formulae := "git-lfs ruff shellcheck tednaleid/sumpig/sumpig tednaleid/veer/veer"
 
 # standalone python scripts (uv single-file), linted and formatted by ruff
-_scripts := "csess standup-digest glab-comment"
+_scripts := "csess standup-digest glab-comment morning-login"
 
 # claude plugin marketplaces to add/update (github owner/repo)
 _claude_marketplaces := "anthropics/claude-plugins-official tednaleid/claude-plugins"

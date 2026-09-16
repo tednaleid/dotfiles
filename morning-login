@@ -309,7 +309,9 @@ def diagnose(profile):
         sts = ["aws", "sts", "get-caller-identity", "--profile", target.profile]
         aws_state = "still valid" if probe(sts) else "expired"
         sso_expiry = sso_token_expiry(cache_entries(SSO_CACHE), target.start_url)
-        role_expiry = role_credential_expiry(cache_entries(CLI_CACHE), target.account_id)
+        role_expiry = role_credential_expiry(
+            cache_entries(CLI_CACHE), target.account_id
+        )
     print(f"\nAWS credentials: {aws_state}")
 
     google_cost = aws_cost = "not observed"
