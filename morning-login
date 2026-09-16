@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import termios
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -174,6 +175,25 @@ def run(command):
     return subprocess.run(command, check=False).returncode == 0
 
 
+def run_restoring_echo(command):
+    """Run a command that may switch terminal echo off, and switch it back on.
+
+    A password challenge disables echo. Interrupting one at the prompt leaves
+    the terminal that way, so every later prompt reads back invisibly.
+    """
+    try:
+        saved = termios.tcgetattr(sys.stdin.fileno())
+    except (termios.error, ValueError, OSError):
+        saved = None
+    try:
+        subprocess.run(command, stdout=subprocess.DEVNULL, check=False)
+    except KeyboardInterrupt:
+        print()
+    finally:
+        if saved is not None:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, saved)
+
+
 def gcloud_leg(act):
     name = "gcloud ADC"
     if not shutil.which("gcloud"):
@@ -278,14 +298,7 @@ def diagnose(profile):
 
     print("Probing the gcloud user credential. Watch what it asks for, then")
     print("press Ctrl-C at the prompt rather than answering it.\n")
-    try:
-        subprocess.run(
-            ["gcloud", "auth", "print-access-token"],
-            stdout=subprocess.DEVNULL,
-            check=False,
-        )
-    except KeyboardInterrupt:
-        print()
+    run_restoring_echo(["gcloud", "auth", "print-access-token"])
     challenge = ask("What did gcloud ask for?", CHALLENGES)
 
     target = resolve_aws_target(read_text(AWS_CONFIG), profile)
