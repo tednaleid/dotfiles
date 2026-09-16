@@ -1,17 +1,16 @@
 # BASIC SETUP ######################################################### 
 
 typeset -U PATH
-autoload colors; colors;
 
-XDG_CONFIG_HOME="$HOME/.config"
+export XDG_CONFIG_HOME="$HOME/.config"
 
 # HOMEBREW ############################################################ 
 
 # $(brew --prefix) is slow, check existing env variable instead
 if [ "$CPUTYPE" = "arm64" ]; then
-  HOMEBREW_PREFIX=/opt/homebrew
+  export HOMEBREW_PREFIX=/opt/homebrew
 else 
-  HOMEBREW_PREFIX=/usr/local
+  export HOMEBREW_PREFIX=/usr/local
 fi
 
 PATH=$HOMEBREW_PREFIX/bin:$HOMEBREW_PREFIX/sbin:$PATH
@@ -100,9 +99,6 @@ alias manbi='man zshbuiltins'
 # directory usage recursive
 alias duc='du -sh *(/)'
 
-# starts a server on port 8000 that makes the current directory browsable with a webbrowser
-alias webshare='python -m SimpleHTTPServer'
-
 alias ws='windsurf'
 
 alias icat='upscale show'
@@ -153,7 +149,7 @@ case $OSTYPE in
   ;;
 esac
 
-export EDITOR=code
+export EDITOR="code --wait"
 export WORDS=/usr/share/dict/words
 
 # direnv
@@ -174,30 +170,23 @@ fi
 
 # fzf
 if type fzf &> /dev/null; then
-  local fzf_shell="/opt/homebrew/opt/fzf/shell"
+  export FZF_CTRL_R_OPTS="--min-height=20 --exact --preview 'echo {}' --preview-window down:3:wrap"
+  export FZF_DEFAULT_COMMAND='rg --files --no-ignore --hidden --follow -g "!{.git,node_modules,build}/*" 2> /dev/null'
+  export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 
-  if [[ -d "${fzf_shell}" ]]; then
-    export FZF_CTRL_R_OPTS="--min-height=20 --exact --preview 'echo {}' --preview-window down:3:wrap"
-    export FZF_DEFAULT_COMMAND='rg --files --no-ignore --hidden --follow -g "!{.git,node_modules,build}/*" 2> /dev/null'
-    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-
-    export FZF_CTRL_T_OPTS=$'--min-height=20 --preview \'[[ $(file --mime {}) =~ binary ]] && echo {} is a binary file ||
+  export FZF_CTRL_T_OPTS=$'--min-height=20 --preview \'[[ $(file --mime {}) =~ binary ]] && echo {} is a binary file ||
                     (bat --style=numbers --color=always {} ||
                       cat {}) 2> /dev/null | head -500
     \''
 
-    export FZF_DEFAULT_OPTS="
-      --layout=reverse
-      --info=inline
-      --height=80%
-      --bind '?:toggle-preview'
-    "
+  export FZF_DEFAULT_OPTS="
+    --layout=reverse
+    --info=inline
+    --height=80%
+    --bind '?:toggle-preview'
+  "
 
-    source "${fzf_shell}/completion.zsh" 2> /dev/null
-    source "${fzf_shell}/key-bindings.zsh"
-  else
-    echo "fzf shell scripts not found, check installation"
-  fi 
+  eval "$(fzf --zsh)"
 else
   echo "missing fzf, install with:"
   echo "brew install fzf"

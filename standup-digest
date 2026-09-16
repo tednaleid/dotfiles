@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-
 DURATION = re.compile(r"^(\d+)([hdw])$")
 DURATION_UNITS = {"h": 3600, "d": 86400, "w": 604800}
 
@@ -258,7 +257,9 @@ def prompts(session):
         kept.append(turn)
         counts.append(1)
     return [
-        turn if count == 1 else Turn(kind=turn.kind, when=turn.when, text=turn.text, repeats=count)
+        turn
+        if count == 1
+        else Turn(kind=turn.kind, when=turn.when, text=turn.text, repeats=count)
         for turn, count in zip(kept, counts)
     ]
 
@@ -590,7 +591,9 @@ def render(window, sessions, commits, mr_lines, mr_refs, jira, problems):
     out += ["", "## commits"]
     out.append("" if commits else "none")
     for commit in sorted(commits, key=lambda c: c.when):
-        out.append(f"- {commit.when:%Y-%m-%d} {commit.repo} {commit.sha} {commit.subject}")
+        out.append(
+            f"- {commit.when:%Y-%m-%d} {commit.repo} {commit.sha} {commit.subject}"
+        )
 
     out += ["", "## merge requests"]
     out.append("" if mr_lines else "none")

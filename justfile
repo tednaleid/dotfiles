@@ -1,11 +1,14 @@
 # ABOUTME: justfile for managing dotfile symlinks from this repo to home directory
-# ABOUTME: also installs homebrew casks and shared clipboard tool
+# ABOUTME: also installs homebrew casks, formulae, and standalone tools
 
 # homebrew casks to install/upgrade (use full tap path for custom taps)
 _casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/grounded"
 
 # homebrew formulae to install/upgrade (use full tap path for custom taps)
-_formulae := "tednaleid/sumpig/sumpig tednaleid/veer/veer"
+_formulae := "git-lfs ruff shellcheck tednaleid/sumpig/sumpig tednaleid/veer/veer"
+
+# standalone python scripts (uv single-file), linted and formatted by ruff
+_scripts := "csess standup-digest glab-comment"
 
 # claude plugin marketplaces to add/update (github owner/repo)
 _claude_marketplaces := "astral-sh/claude-code-plugins anthropics/claude-plugins-official obra/superpowers-marketplace tednaleid/claude-plugins"
@@ -31,15 +34,18 @@ default:
     @echo "  just formulae  - install/upgrade homebrew formulae"
     @echo "  just bun       - install/upgrade bun via homebrew"
     @echo "  just playwright - install playwright-cli (via bun) and its skill"
-    @echo "  just pb        - set up pb shared clipboard tool"
     @echo "  just csess     - set up the Claude Code session browser"
     @echo "  just standup-digest - set up the daily standup gatherer"
     @echo "  just glab-comment - set up the GitLab MR comment poster"
     @echo "  just test      - run the python unit tests"
+    @echo "  just lint      - syntax-check zsh, shellcheck hooks, ruff the scripts, validate ghostty config"
+    @echo "  just fmt       - ruff-fix and format the python scripts"
+    @echo "  just check     - lint then test"
+    @echo "  just install-hooks - install the pre-commit hook that runs just check"
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks formulae bun playwright pb csess standup-digest glab-comment veer
+all: git zsh ssh ghostty atuin claude casks formulae bun playwright csess standup-digest glab-comment veer install-hooks
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 # skips files whose dest dir is a symlink pointing outside dest, so a symlinked
@@ -368,13 +374,6 @@ dock-spacer:
     sleep 1
     killall Dock
 
-# set up pb shared clipboard tool
-pb:
-    @mkdir -p {{home_directory()}}/.local/bin
-    @mkdir -p {{home_directory()}}/code/pb
-    @just _symlink {{justfile_directory()}}/pb {{home_directory()}}/.local/bin/pb
-    @just _symlink {{justfile_directory()}}/pb-preview {{home_directory()}}/.local/bin/pb-preview
-
 # set up csess, the Claude Code session browser
 csess:
     @mkdir -p {{home_directory()}}/.local/bin
@@ -393,3 +392,43 @@ glab-comment:
 # run the python unit tests
 test:
     @uv run --with pytest --with iterfzf pytest tests/ -q
+
+# syntax-check the zsh config, shellcheck the hook scripts, lint the python scripts, validate the ghostty config
+lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    for f in zshrc zsh.d/*.sh zsh.d/*.zsh; do
+        zsh -n "$f"
+    done
+    shellcheck claude-statusline.sh claude-prompt-submit-hook.sh
+    ruff check {{_scripts}}
+    ruff format --check {{_scripts}}
+    ghostty=/Applications/Ghostty.app/Contents/MacOS/ghostty
+    # piped so the validator never treats stdout as a terminal and clears the screen
+    if [ -x "$ghostty" ]; then
+        "$ghostty" +validate-config --config-file=ghostty_config 2>&1 | cat
+    fi
+    echo "✓ lint passed"
+
+# apply ruff fixes and formatting to the python scripts
+fmt:
+    ruff check --fix {{_scripts}}
+    ruff format {{_scripts}}
+
+# lint then test (run by the pre-commit hook)
+check: lint test
+
+# install a git pre-commit hook that runs just check
+install-hooks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    hook="{{justfile_directory()}}/.git/hooks/pre-commit"
+    cat > "$hook" << 'HOOK'
+    #!/bin/sh
+    # git exports these to hooks; they would leak into the temp repos the tests create
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
+    just check
+    HOOK
+    chmod +x "$hook"
+    echo "✓ Installed pre-commit hook: $hook"

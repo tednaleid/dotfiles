@@ -15,6 +15,7 @@ set -euo pipefail
 input=$(cat)
 
 # --- Context gradient thresholds ---
+# shellcheck disable=SC2034  # green_pct is documented in the env var format but the gradient starts green
 IFS=',' read -r green_pct yellow_pct red_pct <<< "${CLAUDE_CONTEXT_GRADIENT:-15,40,70}"
 
 # Returns the ANSI color code for a given percentage on the gradient

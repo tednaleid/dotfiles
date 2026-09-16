@@ -4,7 +4,6 @@
 
 [core]
   excludesfile = ~/.gitignore
-  editor = vim
   ignorecase = false
   filemode = false
   pager = delta
@@ -68,7 +67,7 @@
   diff = auto
   status = auto
   branch = auto
-  ui = always
+  ui = auto
 
 [push]
   default = simple

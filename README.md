@@ -5,6 +5,7 @@
 * git
 * just (`brew install just`)
 * jq (`brew install jq`) — used by `claude-settings` and `claude-statusline.sh`
+* shellcheck and ruff (installed by `just formulae`) — used by `just lint`
 
 ## Install
 
@@ -24,7 +25,7 @@ just ghostty   # ghostty terminal config and shaders
 just atuin     # atuin shell history config
 just claude    # claude AI config (see below)
 just veer      # veer global rules + PreToolUse hook (see below)
-just formulae  # install homebrew formulae (sumpig, veer)
+just formulae  # install homebrew formulae (git-lfs, ruff, shellcheck, sumpig, veer)
 ```
 
 ## SSH

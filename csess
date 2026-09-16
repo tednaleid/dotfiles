@@ -21,7 +21,6 @@ from pathlib import Path
 
 import iterfzf
 
-
 WORKTREE_MARKER = "/.claude/worktrees/"
 RECAP_HINT = re.compile(r"\s*\(disable recaps in /config\)\s*$")
 DURATION = re.compile(r"^(\d+)([hdwmy])$")
@@ -196,7 +195,13 @@ def find_transcript(root, session_id):
 
 
 CACHED_FIELDS = (
-    "cwd", "branch", "recap", "custom_title", "ai_title", "last_prompt", "message_count",
+    "cwd",
+    "branch",
+    "recap",
+    "custom_title",
+    "ai_title",
+    "last_prompt",
+    "message_count",
 )
 
 
@@ -237,7 +242,11 @@ def index_sessions(root, cache_file=None):
         stat = path.stat()
         key = str(path)
         hit = cached.get(key)
-        if hit and hit.get("mtime") == stat.st_mtime and hit.get("size") == stat.st_size:
+        if (
+            hit
+            and hit.get("mtime") == stat.st_mtime
+            and hit.get("size") == stat.st_size
+        ):
             session = Session(id=path.stem, path=path, mtime=stat.st_mtime)
             for field in CACHED_FIELDS:
                 setattr(session, field, hit[field])
@@ -263,7 +272,8 @@ def filter_sessions(sessions, project=None, since=None, now=None):
     return [
         s
         for s in sessions
-        if (project is None or s.project_key == project) and (cutoff is None or s.mtime >= cutoff)
+        if (project is None or s.project_key == project)
+        and (cutoff is None or s.mtime >= cutoff)
     ]
 
 
@@ -387,7 +397,10 @@ def resume_argv(session, cwd):
     """Build the claude invocation that resumes a session in the given directory."""
     argv = ["claude", "--resume", session.id]
     if session.cwd and session.cwd != cwd:
-        argv += ["--append-system-prompt", RELOCATION_NOTE.format(origin=session.cwd, cwd=cwd)]
+        argv += [
+            "--append-system-prompt",
+            RELOCATION_NOTE.format(origin=session.cwd, cwd=cwd),
+        ]
     return argv
 
 
@@ -543,15 +556,23 @@ def launch_fork(session, cwd, sessions):
 def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
-        "-a", "--all", action="store_true", default=argparse.SUPPRESS,
+        "-a",
+        "--all",
+        action="store_true",
+        default=argparse.SUPPRESS,
         help="every project, not just the one you are standing in",
     )
     common.add_argument(
-        "--since", metavar="AGE", default=argparse.SUPPRESS,
+        "--since",
+        metavar="AGE",
+        default=argparse.SUPPRESS,
         help="only sessions touched within e.g. 12h, 14d, 2w, 3m, 1y",
     )
     common.add_argument(
-        "-g", "--grep", metavar="REGEX", default=argparse.SUPPRESS,
+        "-g",
+        "--grep",
+        metavar="REGEX",
+        default=argparse.SUPPRESS,
         help="only sessions whose transcript matches a regex",
     )
 
@@ -563,18 +584,24 @@ def build_parser():
     parser.set_defaults(all=False, since=None, grep=None, command=None)
     sub = parser.add_subparsers(dest="command")
 
-    listing = sub.add_parser("list", parents=[common], help="print sessions instead of picking one")
+    listing = sub.add_parser(
+        "list", parents=[common], help="print sessions instead of picking one"
+    )
     listing.add_argument("--json", action="store_true", help="machine-readable output")
 
-    for name, blurb in (("preview", "render one session's detail pane"),
-                        ("transcript", "print one session's conversation"),
-                        ("fork", "branch a session into a new, named one"),
-                        ("resume", "resume a session by id")):
+    for name, blurb in (
+        ("preview", "render one session's detail pane"),
+        ("transcript", "print one session's conversation"),
+        ("fork", "branch a session into a new, named one"),
+        ("resume", "resume a session by id"),
+    ):
         one = sub.add_parser(name, help=blurb)
         one.add_argument("session_id")
         if name == "resume":
             one.add_argument(
-                "--force", action="store_true", help="resume even if it is open elsewhere"
+                "--force",
+                action="store_true",
+                help="resume even if it is open elsewhere",
             )
 
     return parser

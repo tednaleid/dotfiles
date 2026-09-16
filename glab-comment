@@ -233,8 +233,10 @@ def diff_index(iid):
                 index[path]["lines"] = parse_diff_lines(entry["diff"])
                 backfilled.append(path)
         if backfilled:
-            print(f"backfilled collapsed diffs from /changes: {', '.join(backfilled)}",
-                  file=sys.stderr)
+            print(
+                f"backfilled collapsed diffs from /changes: {', '.join(backfilled)}",
+                file=sys.stderr,
+            )
         missing = [p for p in collapsed if p not in backfilled]
         if missing:
             names = ", ".join(missing)

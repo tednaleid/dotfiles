@@ -7,20 +7,21 @@ tool. There is no application to build; the repo is the source of truth for one
 developer's machine setup.
 
 ## Stack
-- Languages: zsh (config + prompt), Bash (recipe bodies + hooks), Python (single `uv` script: `pb`)
+- Languages: zsh (config + prompt), Bash (recipe bodies + hooks), Python (standalone `uv` scripts: `csess`, `standup-digest`, `glab-comment`)
 - Task runner: just (authoritative for all setup)
 - Package managers: Homebrew (casks, formulae, bun), bun (global CLIs)
 - Target: macOS (Darwin); `zsh.d` fragments are `.Darwin`-suffixed
 
 ## Common commands
 - Apply everything: `just all`
-- Per component: `just git` | `just zsh` | `just ssh` | `just ghostty` | `just atuin` | `just claude` | `just veer` | `just pb`
+- Per component: `just git` | `just zsh` | `just ssh` | `just ghostty` | `just atuin` | `just claude` | `just veer`
 - Install tools: `just casks` | `just formulae` | `just bun` | `just playwright`
 - List recipes: `just --list`
 
 - Run tests: `just test` (pytest over `tests/`, covering the pure logic in the standalone scripts)
-
-There is no lint, format, or typecheck recipe; this repo is config plus a few small tools.
+- Lint: `just lint` (zsh syntax, shellcheck on the hook scripts, ruff on the python scripts, ghostty config validation)
+- Format: `just fmt` (ruff fix + format on the python scripts)
+- Everything: `just check` (lint then test); `just install-hooks` wires it into a pre-commit hook, and `just all` includes that
 
 ## Architecture
 Two install primitives drive everything: `_symlink` (idempotent, skips if the
@@ -44,7 +45,6 @@ writes back into the repo.
 - `claude-settings-patch.json` -- deep-merged into `~/.claude/settings.json`
 - `claude-statusline.sh`, `claude-prompt-submit-hook.sh` -- Claude Code statusline + UserPromptSubmit hook
 - `veer_config.toml` -- global veer rules (symlinked; `veer add/remove --global` writes through)
-- `pb` -- standalone clipboard tool (uv single-file script), installed to `~/.local/bin`
 - `csess` -- Claude Code session browser (uv single-file script), installed to `~/.local/bin`; indexes `~/.claude/projects` and resumes a session via fzf
 - `tests/` -- pytest suite for the standalone scripts, run by `just test`
 - `.llm/` -- gitignored scratch (benchmarks, throwaway test scripts)
