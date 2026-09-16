@@ -99,8 +99,6 @@ alias manbi='man zshbuiltins'
 # directory usage recursive
 alias duc='du -sh *(/)'
 
-alias ws='windsurf'
-
 alias icat='upscale show'
 
 function drma() {
@@ -212,10 +210,6 @@ fi
 
 if [[ -d "$HOME/bin" ]]; then
   export PATH="$HOME/bin:$PATH"
-fi
-
-if [[ -d "$HOME/.codeium/windsurf/bin" ]]; then
-  export PATH="$HOME/.codeium/windsurf/bin:$PATH"
 fi
 
 # AWS
