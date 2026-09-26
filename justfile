@@ -11,10 +11,10 @@ _formulae := "git-lfs ruff shellcheck tednaleid/sumpig/sumpig tednaleid/veer/vee
 _scripts := "csess standup-digest glab-comment"
 
 # claude plugin marketplaces to add/update (github owner/repo)
-_claude_marketplaces := "astral-sh/claude-code-plugins anthropics/claude-plugins-official obra/superpowers-marketplace tednaleid/claude-plugins"
+_claude_marketplaces := "anthropics/claude-plugins-official tednaleid/claude-plugins"
 
 # claude plugins to install/update (plugin@marketplace)
-_claude_plugins := "astral@astral-sh superpowers@superpowers-marketplace context-relay@tednaleid just-bootstrap@tednaleid onboard-codebase@tednaleid review-branch@tednaleid worktree@tednaleid"
+_claude_plugins := "superpowers@claude-plugins-official context-relay@tednaleid just-bootstrap@tednaleid onboard-codebase@tednaleid review-branch@tednaleid worktree@tednaleid mattpocock-skills@claude-plugins-official"
 
 # default recipe - show help
 default:
