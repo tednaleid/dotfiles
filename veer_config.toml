@@ -52,3 +52,25 @@ command = "glab"
 arg_regex = "merge_requests/[0-9]+/(discussions|notes)"
 raw_regex = "(-X|--method)[ =]+POST"
 
+
+# Style rules: no emoji, status-marker glyphs, or em dashes in anything the
+# agent writes. The first covers tool input (files, commands, prompts, plans,
+# subagent reports); the second checks the finished reply and gives the agent
+# one correction turn. Markdown code spans are exempt in replies.
+[[rule]]
+id = "no-emoji-in-tool-input"
+name = "No emoji, status markers, or em dashes in tool input"
+tool = "*"
+action = "reject"
+message = "Do not use emoji, status markers, or em dashes. Use plain words (\"Pass:\", \"Fail:\", \"Note:\") and a hyphen or comma instead of an em dash. If code must contain one of these characters, write it as an escape such as \\u2713."
+[rule.match]
+content_chars = ["emoji", "status_markers", "emdash"]
+
+[[rule]]
+id = "no-emoji-in-replies"
+name = "No emoji, status markers, or em dashes in replies"
+event = "Stop"
+action = "reject"
+message = "Your last reply used emoji, status markers, or em dashes. Restate the affected parts in plain words, and put a character in backticks when you need to refer to it."
+[rule.match]
+content_chars = ["emoji", "status_markers", "emdash"]
