@@ -27,7 +27,7 @@ Create a git commit following message conventions.
 
 ## Commit Command
 
-NEVER use `$()` command substitution in the commit command. Always use `git commit -F -` with a heredoc:
+Pass the message to `git commit -F -` with a heredoc, not through `$()` command substitution:
 
 ```bash
 git commit -F - <<'EOF'
