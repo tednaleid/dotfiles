@@ -273,7 +273,6 @@ CHALLENGES = [
 BROWSER_COST = [
     "two clicks, already signed in",
     "password and a one-time code",
-    "a security key touch",
     "did not open a browser",
 ]
 
