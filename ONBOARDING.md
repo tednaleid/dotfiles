@@ -42,8 +42,9 @@ writes back into the repo.
 - `atuin_config.toml` -- shell history config
 - `.claude/CLAUDE.md` -- global Claude instructions, symlinked to `~/.claude/CLAUDE.md`
 - `.claude/skills/` -- skills copied to `~/.claude/skills/`
-- `claude-settings-patch.json` -- deep-merged into `~/.claude/settings.json`
-- `claude-statusline.sh`, `claude-prompt-submit-hook.sh` -- Claude Code statusline + UserPromptSubmit hook
+- `claude-settings-patch.json` -- deep-merged into `~/.claude/settings.json` by `claude-settings-merge.jq`, which first drops any hook entry whose command points into this repo, so hooks removed from the patch are removed from the live file
+- `claude-statusline.sh` -- Claude Code statusline
+- `claude-mods/` -- Claude Code mods (function-hook plugins), loaded through `CLAUDE_CODE_PLUGIN_DIRS` in the settings patch; `turn-timer` shows the running and last turn duration under the prompt
 - `veer_config.toml` -- global veer rules (symlinked; `veer add/remove --global` writes through)
 - `csess` -- Claude Code session browser (uv single-file script), installed to `~/.local/bin`; indexes `~/.claude/projects` and resumes a session via fzf
 - `morning-login` -- cloud credential refresher (uv single-file script), installed to `~/.local/bin`; probes gcloud ADC and AWS SSO and re-authenticates whichever expired

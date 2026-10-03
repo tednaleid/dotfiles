@@ -205,11 +205,12 @@ claude-settings:
     fi
     # substitute dotfiles dir placeholder then deep-merge into live settings
     resolved=$(sed "s|__DOTFILES_DIR__|{{justfile_directory()}}|g" "$patch")
-    merged=$(jq -s '.[0] * .[1]' "$settings" <(echo "$resolved"))
+    merged=$(jq --arg dir "{{justfile_directory()}}" --argjson patch "$resolved" \
+        -f {{justfile_directory()}}/claude-settings-merge.jq "$settings")
     echo "$merged" > "$settings"
     echo "✓ Patched $settings"
 
-# windows variant: normalize paths, run .sh statusline/hook via bash (dotfiles path must have no spaces)
+# windows variant: normalize paths, run the .sh statusline via bash (dotfiles path must have no spaces)
 [windows]
 claude-settings:
     #!/usr/bin/env bash
@@ -226,13 +227,13 @@ claude-settings:
         cp "$settings" "$settings.bak"
         echo "backed up $settings -> $settings.bak"
     fi
-    # forward-slash dotfiles dir; statusline + hook are .sh, so invoke them via bash
+    # forward-slash dotfiles dir; the statusline is .sh, so invoke it via bash
     resolved=$(sed \
         -e "s|__DOTFILES_DIR__/claude-statusline.sh|bash $dir_m/claude-statusline.sh|g" \
-        -e "s|__DOTFILES_DIR__/claude-prompt-submit-hook.sh|bash $dir_m/claude-prompt-submit-hook.sh|g" \
+        -e "s|__DOTFILES_DIR__|$dir_m|g" \
         "$patch")
     # --argjson avoids process substitution, which is unreliable under Git Bash
-    merged=$(jq --argjson patch "$resolved" '. * $patch' "$settings")
+    merged=$(jq --arg dir "$dir_m" --argjson patch "$resolved" -f "$dir_m/claude-settings-merge.jq" "$settings")
     echo "$merged" > "$settings"
     echo "✓ Patched $settings"
 
@@ -395,11 +396,12 @@ morning-login:
     @mkdir -p {{home_directory()}}/.local/bin
     @just _symlink {{justfile_directory()}}/morning-login {{home_directory()}}/.local/bin/morning-login
 
-# run the python unit tests
+# run the python unit tests and the claude mod tests
 test:
     @uv run --with pytest --with iterfzf pytest tests/ -q
+    @for mod in claude-mods/*/; do claude plugin test "$mod"; done
 
-# syntax-check the zsh config, shellcheck the hook scripts, lint the python scripts, validate the ghostty config
+# syntax-check the zsh config, shellcheck the statusline, lint the python scripts, validate the ghostty config
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -407,7 +409,7 @@ lint:
     for f in zshrc zsh.d/*.sh zsh.d/*.zsh; do
         zsh -n "$f"
     done
-    shellcheck claude-statusline.sh claude-prompt-submit-hook.sh
+    shellcheck claude-statusline.sh
     ruff check {{_scripts}}
     ruff format --check {{_scripts}}
     ghostty=/Applications/Ghostty.app/Contents/MacOS/ghostty

@@ -39,22 +39,11 @@
     ]
   },
   "env": {
-    "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "1"
+    "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "1",
+    "CLAUDE_CODE_PLUGIN_DIRS": "__DOTFILES_DIR__/claude-mods/turn-timer"
   },
   "alwaysThinkingEnabled": true,
   "cleanupPeriodDays": 99999,
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "__DOTFILES_DIR__/claude-prompt-submit-hook.sh"
-          }
-        ]
-      }
-    ]
-  },
   "statusLine": {
     "type": "command",
     "command": "__DOTFILES_DIR__/claude-statusline.sh"

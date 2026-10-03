@@ -1,0 +1,6 @@
+{
+  "name": "turn-timer",
+  "version": "0.1.0",
+  "description": "Shows how long the current turn has been running, then how long the last turn took, in the prompt footer",
+  "types": "./types/index.d.ts"
+}

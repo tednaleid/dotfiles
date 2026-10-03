@@ -65,18 +65,6 @@ fi
 # --- Model name ---
 model=$(echo "$input" | jq -r '.model.display_name')
 
-# --- Last response duration (wall-clock since prompt submission) ---
-session_id=$(echo "$input" | jq -r '.session_id')
-submit_cache="/tmp/.claude-prompt-submit-${session_id}"
-if [ -f "$submit_cache" ]; then
-  submit_sec=$(cat "$submit_cache")
-  now_sec=$(date +%s)
-  elapsed_sec=$((now_sec - submit_sec))
-  duration_display="${elapsed_sec}s"
-else
-  duration_display="--"
-fi
-
 # --- Context usage (color-coded progress bar) ---
 # used_percentage and context_window_size reflect current context, not cumulative session totals
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
@@ -119,4 +107,4 @@ else
 fi
 
 # --- Render ---
-printf "\033[33m%s\033[0m%b | %s | %b | %s" "$dir_display" "$git_branch" "$model" "$context_display" "$duration_display"
+printf "\033[33m%s\033[0m%b | %s | %b" "$dir_display" "$git_branch" "$model" "$context_display"
