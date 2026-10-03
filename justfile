@@ -227,9 +227,11 @@ claude-settings:
         cp "$settings" "$settings.bak"
         echo "backed up $settings -> $settings.bak"
     fi
-    # forward-slash dotfiles dir; the statusline is .sh, so invoke it via bash
+    # forward-slash dotfiles dir; the statusline is .sh, so invoke it via bash;
+    # path lists (CLAUDE_CODE_PLUGIN_DIRS) use ; on windows since drive letters contain :
     resolved=$(sed \
         -e "s|__DOTFILES_DIR__/claude-statusline.sh|bash $dir_m/claude-statusline.sh|g" \
+        -e "s|:__DOTFILES_DIR__|;$dir_m|g" \
         -e "s|__DOTFILES_DIR__|$dir_m|g" \
         "$patch")
     # --argjson avoids process substitution, which is unreliable under Git Bash

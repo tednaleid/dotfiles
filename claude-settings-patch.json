@@ -40,7 +40,7 @@
   },
   "env": {
     "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "1",
-    "CLAUDE_CODE_PLUGIN_DIRS": "__DOTFILES_DIR__/claude-mods/turn-timer"
+    "CLAUDE_CODE_PLUGIN_DIRS": "__DOTFILES_DIR__/claude-mods/turn-timer:__DOTFILES_DIR__/claude-mods/context-bar"
   },
   "alwaysThinkingEnabled": true,
   "cleanupPeriodDays": 99999,
