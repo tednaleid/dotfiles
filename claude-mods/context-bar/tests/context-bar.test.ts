@@ -75,7 +75,7 @@ test('a tiny used segment still gets one cell', () => {
   expect(cellWidths(segs, 140)).toEqual([1, 139])
 })
 
-test('draws the bar and legend, and /context-bar toggles it', async ($, on) => {
+test('starts hidden, and /context-bar toggles the bar and legend', async ($, on) => {
   on('session.usage', () => ({ value: USAGE }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.render', ($, e) => {
@@ -85,6 +85,12 @@ test('draws the bar and legend, and /context-bar toggles it', async ($, on) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
 
+  const initial = await $.ui.mount({ plugin: 'context-bar', surface: 'terminal', ...BAND })
+  expect(await initial.find({ key: 'bar' })).toBeUndefined()
+  expect(await initial.find({ key: 'engine' })).toBeDefined()
+  await initial.unmount()
+
+  expect((await $.command.run(TOGGLE)).text).toBe('Context bar shown.')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'context-bar', surface, ...BAND })
     expect(await ui.find({ type: 'Text', text: /80k\/200k \(40%\)/ })).toBeDefined()
@@ -99,8 +105,5 @@ test('draws the bar and legend, and /context-bar toggles it', async ($, on) => {
   expect((await $.command.run(TOGGLE)).text).toBe('Context bar hidden.')
   const hidden = await $.ui.mount({ plugin: 'context-bar', surface: 'terminal', ...BAND })
   expect(await hidden.find({ key: 'bar' })).toBeUndefined()
-  expect(await hidden.find({ key: 'engine' })).toBeDefined()
   await hidden.unmount()
-
-  expect((await $.command.run(TOGGLE)).text).toBe('Context bar shown.')
 })

@@ -8,7 +8,7 @@ import { cellWidths, formatTokens, toSnapshot } from './bar'
 
 const COMMAND = 'context-bar'
 const snapshot = atom({ plugin: 'context-bar', key: 'snapshot' } as const, null)
-const isShown = atom({ plugin: 'context-bar', key: 'isShown' } as const, true)
+const isShown = atom({ plugin: 'context-bar', key: 'isShown' } as const, false)
 
 const refresh = async ($: EngineInterface) => {
   const usage = await $.session.usage({ breakdown: 'summary' })

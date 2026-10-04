@@ -9,3 +9,5 @@ __pycache__/
 .pytest_cache/
 .playwright-cli/
 .superpowers/
+# written by claude code when it loads a mod
+claude-mods/*/tsconfig.json
