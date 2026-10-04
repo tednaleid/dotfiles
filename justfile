@@ -5,7 +5,7 @@
 _casks := "tednaleid/montty/montty tednaleid/limn/limn tednaleid/grounded/grounded"
 
 # homebrew formulae to install/upgrade (use full tap path for custom taps)
-_formulae := "git-lfs ruff shellcheck tednaleid/sumpig/sumpig tednaleid/veer/veer"
+_formulae := "git-lfs ruff shellcheck uv tednaleid/sumpig/sumpig tednaleid/veer/veer"
 
 # standalone python scripts (uv single-file), linted and formatted by ruff
 _scripts := "csess standup-digest glab-comment morning-login"
@@ -33,6 +33,7 @@ default:
     @echo "  just casks     - install/upgrade homebrew casks"
     @echo "  just formulae  - install/upgrade homebrew formulae"
     @echo "  just bun       - install/upgrade bun via homebrew"
+    @echo "  just python    - install the uv-managed python used by the scripts and tests"
     @echo "  just playwright - install playwright-cli (via bun) and its skill"
     @echo "  just csess     - set up the Claude Code session browser"
     @echo "  just standup-digest - set up the daily standup gatherer"
@@ -46,7 +47,7 @@ default:
     @echo "  just dock-spacer - add a spacer tile to the macOS dock"
 
 # set up all dotfiles
-all: git zsh ssh ghostty atuin claude casks formulae bun playwright csess standup-digest glab-comment morning-login veer install-hooks
+all: git zsh ssh ghostty atuin claude casks formulae python bun playwright csess standup-digest glab-comment morning-login veer install-hooks
 
 # copy every file under source dir into dest dir, preserving subdirectory structure
 # skips files whose dest dir is a symlink pointing outside dest, so a symlinked
@@ -338,6 +339,10 @@ formulae:
             brew install "$formula"
         fi
     done
+
+# install the uv-managed python that the uv scripts and tests run on
+python: formulae
+    @uv python install 3.14
 
 # (a standalone ~/.bun/bin/bun shadows brew's on PATH, so drop it; ~/.bun stays the
 #  home for `bun add -g` packages and their bin symlinks like pi and playwright-cli)
