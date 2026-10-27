@@ -54,6 +54,32 @@ test('adds the running and then the final turn time to the footer modes', async 
   await ui.unmount()
 })
 
+test('keeps timing the main turn when subagents start during it', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: 'done' }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    const modes = e.component === 'SessionMode' ? e.props.modes : []
+    return h(Text, {}, modes.join(' & ')) as RenderElement
+  })
+
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await clock.advance(10_000)
+  await Promise.all([
+    $.turn.start({ text: 'a', turnId: 's1', agentId: 'sub-1' }),
+    $.turn.start({ text: 'b', turnId: 's2', agentId: 'sub-2' }),
+  ])
+  await clock.advance(5_000)
+  const ui = await $.ui.mount({ plugin: 'turn-timer', surface: 'terminal', ...FOOTER })
+  expect((await ui.find({ type: 'Text' }))?.text).toBe('focus & turn 15s')
+
+  await $.turn.complete(COMPLETE)
+  await clock.advance(5_000)
+  expect((await ui.find({ type: 'Text' }))?.text).toBe('focus & last turn 1m12s')
+  await ui.unmount()
+})
+
 test('says when a turn was interrupted', async ($, on) => {
   on('turn.complete', () => ({ text: '' }))
   on('ui.render', ($, e) => {

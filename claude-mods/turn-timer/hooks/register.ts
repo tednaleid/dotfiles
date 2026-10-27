@@ -18,6 +18,7 @@ export const register: Register = on => {
   let tick: Timer | undefined
 
   on('turn.start', async ($, e, next) => {
+    if (e.agentId !== undefined) return next(e)
     tick?.cancel()
     const startedAt = await $.clock.now()
     await update($, label, () => 'turn 0s')
